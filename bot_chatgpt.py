@@ -208,10 +208,11 @@ REMINDERS = [
 def main_kb():
     """Красивое нижнее меню."""
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="💬 ChatGPT"),        KeyboardButton(text="🌍 Переводчик")],
-        [KeyboardButton(text="✍️ Редактор текста"), KeyboardButton(text="💎 Premium")],
-        [KeyboardButton(text="👤 Профиль"),         KeyboardButton(text="🚀 Поделиться")],
-        [KeyboardButton(text="📁 Проекты"),         KeyboardButton(text="❓ Помощь")],
+        [KeyboardButton(text="💬 ChatGPT"),         KeyboardButton(text="🌍 Переводчик")],
+        [KeyboardButton(text="✍️ Редактор текста"),  KeyboardButton(text="💎 Premium")],
+        [KeyboardButton(text="📋 История"),          KeyboardButton(text="👤 Профиль")],
+        [KeyboardButton(text="🚀 Поделиться"),       KeyboardButton(text="📁 Проекты")],
+        [KeyboardButton(text="❓ Помощь")],
     ], resize_keyboard=True)
 
 def premium_kb():
@@ -283,6 +284,16 @@ async def init_db():
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {dfn}")
             except Exception:
                 pass
+        # Таблица истории запросов
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS history (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                mode       TEXT    DEFAULT 'chat',
+                question   TEXT    NOT NULL,
+                created_at TEXT    NOT NULL
+            )
+        """)
         await db.commit()
 
 async def get_user(user_id: int, username: str = "", first_name: str = "") -> dict:
@@ -380,6 +391,34 @@ async def save_context(user_id: int, context: list):
 
 async def clear_context(user_id: int):
     await _db("UPDATE users SET context='[]' WHERE user_id=?", (user_id,))
+
+async def save_history(user_id: int, mode: str, question: str):
+    """Сохраняем вопрос в историю — максимум 20 последних."""
+    from datetime import datetime
+    now = datetime.now().strftime("%d.%m %H:%M")
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO history (user_id, mode, question, created_at) VALUES (?,?,?,?)",
+            (user_id, mode, question[:200], now)
+        )
+        # Удаляем старые — оставляем только 20
+        await db.execute("""
+            DELETE FROM history WHERE id NOT IN (
+                SELECT id FROM history WHERE user_id=?
+                ORDER BY id DESC LIMIT 20
+            ) AND user_id=?
+        """, (user_id, user_id))
+        await db.commit()
+
+async def get_history(user_id: int) -> list:
+    """Возвращаем последние 5 запросов пользователя."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT mode, question, created_at FROM history WHERE user_id=? ORDER BY id DESC LIMIT 5",
+            (user_id,)
+        ) as cur:
+            return await cur.fetchall()
 
 async def get_mode(user_id: int) -> str:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -531,6 +570,7 @@ async def onboarding_first(msg: Message, state: FSMContext):
     answer  = await ask_ai(msg.text, context)
     await save_question_used(msg.from_user.id, reason == "bonus")
     await touch_active(msg.from_user.id)
+    await save_history(msg.from_user.id, "chat", msg.text)
 
     # Сохраняем контекст
     context.extend([
@@ -622,6 +662,25 @@ async def cmd_clear(msg: Message):
         "🗑 *История диалога очищена*\n\nНачинаем с чистого листа!",
         parse_mode="Markdown"
     )
+
+@dp.message(Command("history"))
+async def cmd_history(msg: Message):
+    rows = await get_history(msg.from_user.id)
+    if not rows:
+        return await msg.answer(
+            "📋 *История пуста*\n\nЗадай первый вопрос — и он появится здесь!",
+            parse_mode="Markdown"
+        )
+    mode_icons = {"chat": "💬", "translate": "🌍", "editor": "✍️"}
+    lines = []
+    for i, row in enumerate(rows, 1):
+        icon = mode_icons.get(row["mode"], "💬")
+        q = row["question"]
+        if len(q) > 60:
+            q = q[:60] + "..."
+        lines.append(f"{i}. {icon} _{row['created_at']}_\n`{q}`")
+    text = "📋 *Последние запросы:*\n\n" + "\n\n".join(lines)
+    await msg.answer(text, parse_mode="Markdown")
 
 @dp.message(Command("help"))
 async def cmd_help(msg: Message):
@@ -749,6 +808,10 @@ async def handle_premium_btn(msg: Message):
         parse_mode="Markdown",
         reply_markup=premium_kb()
     )
+
+@dp.message(F.text == "📋 История")
+async def handle_history_btn(msg: Message):
+    await cmd_history(msg)
 
 @dp.message(F.text == "👤 Профиль")
 async def handle_profile_btn(msg: Message):
@@ -931,6 +994,7 @@ async def handle_message(msg: Message, state: FSMContext):
     answer = await ask_ai(text, context, mode=mode)
     await save_question_used(msg.from_user.id, reason == "bonus")
     await touch_active(msg.from_user.id)
+    await save_history(msg.from_user.id, mode, text)
 
     # Контекст только для chat
     if mode == "chat":
@@ -1007,6 +1071,7 @@ async def set_commands():
         BotCommand(command="profile", description="👤 Твой аккаунт"),
         BotCommand(command="share",   description="🚀 Поделиться с другом"),
         BotCommand(command="projects",description="📁 Наши проекты"),
+        BotCommand(command="history", description="📋 История запросов"),
         BotCommand(command="clear",   description="🗑 Очистить историю диалога"),
         BotCommand(command="help",    description="❓ Справка"),
     ]
