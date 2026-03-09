@@ -37,7 +37,7 @@ PRICE_WEEK      = int(os.getenv("PRICE_WEEK",  "150"))
 PRICE_MONTH     = int(os.getenv("PRICE_MONTH", "399"))
 DB_PATH         = os.getenv("DB_PATH", "chatgpt.db")
 COOLDOWN_SEC    = 10
-LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/advokat_dyavola_bot")  # ссылка на бота-юриста
+LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy_yurist_bot")
 
 FREE_LIMIT      = 3   # бесплатных вопросов в день
 MAX_MSG_LEN     = 4096  # лимит Telegram на одно сообщение
@@ -169,9 +169,9 @@ HELP_TEXT = """🤖 *ChatGPT Free — справка*
 
 PROJECTS_TEXT = """🚀 *Наши проекты*
 
-⚖️ *Адвокат Дьявола*
-Юридический бот — находит лазейки в любом законе.
-Права, штрафы, ДТП, трудовые споры, документы.
+⚖️ *Мой Юрист*
+Юридический помощник по российскому праву.
+Вопросы, документы, жалобы, штрафы, ДТП.
 → {lawyer_url}
 
 🤖 *ChatGPT Free* (здесь)
