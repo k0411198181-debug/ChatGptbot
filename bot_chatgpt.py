@@ -37,7 +37,7 @@ PRICE_WEEK      = int(os.getenv("PRICE_WEEK",  "150"))
 PRICE_MONTH     = int(os.getenv("PRICE_MONTH", "399"))
 DB_PATH         = os.getenv("DB_PATH", "chatgpt.db")
 COOLDOWN_SEC    = 10
-LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy\\_yurist\\_bot")
+LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy_yurist_bot")
 
 FREE_LIMIT      = 3   # бесплатных вопросов в день
 MAX_MSG_LEN     = 4096  # лимит Telegram на одно сообщение
