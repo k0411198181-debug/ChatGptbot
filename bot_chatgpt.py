@@ -171,13 +171,7 @@ PROJECTS_TEXT = """🚀 *Наши проекты*
 
 ⚖️ *Мой Юрист*
 Юридический помощник по российскому праву.
-Вопросы, документы, жалобы, штрафы, ДТП.
-👉 https://t.me/moy_yurist_bot
-
-🤖 *ChatGPT Free* (здесь)
-AI-помощник для любых задач на базе GPT-4o.
-
-_Больше проектов скоро..._"""
+Вопросы, документы, жалобы, штрафы, ДТП."""
 
 SHARE_TEXT = """🚀 *Пригласи друга — получи бонус!*
 
@@ -648,10 +642,16 @@ async def cmd_share(msg: Message):
 @dp.message(Command("projects"))
 async def cmd_projects(msg: Message):
     await msg.answer(
-        PROJECTS_TEXT,
+        "🚀 *Наши проекты*\n\n"
+        "⚖️ *Мой Юрист*\n"
+        "Юридический помощник по российскому праву.\n"
+        "Вопросы, документы, жалобы, штрафы, ДТП.\n\n"
+        "🤖 *ChatGPT Free* (здесь)\n"
+        "AI-помощник для любых задач на базе GPT-4o.\n\n"
+        "_Больше проектов скоро..._",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚖️ Мой Юрист", url="https://t.me/moy_yurist_bot")],
+            [InlineKeyboardButton(text="⚖️ Мой Юрист — перейти", url="https://t.me/moy_yurist_bot")],
         ])
     )
 
@@ -824,10 +824,16 @@ async def handle_share_btn(msg: Message):
 @dp.message(F.text == "📁 Проекты")
 async def handle_projects_btn(msg: Message):
     await msg.answer(
-        PROJECTS_TEXT,
+        "🚀 *Наши проекты*\n\n"
+        "⚖️ *Мой Юрист*\n"
+        "Юридический помощник по российскому праву.\n"
+        "Вопросы, документы, жалобы, штрафы, ДТП.\n\n"
+        "🤖 *ChatGPT Free* (здесь)\n"
+        "AI-помощник для любых задач на базе GPT-4o.\n\n"
+        "_Больше проектов скоро..._",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚖️ Мой Юрист", url="https://t.me/moy_yurist_bot")],
+            [InlineKeyboardButton(text="⚖️ Мой Юрист — перейти", url="https://t.me/moy_yurist_bot")],
         ])
     )
 
@@ -956,9 +962,16 @@ async def payment_done(msg: Message):
 # Основной обработчик текста — главная воронка
 # ──────────────────────────────────────────────────────────────
 
+MENU_BUTTONS = {
+    "💬 ChatGPT", "🌍 Переводчик", "✍️ Редактор текста",
+    "💎 Premium", "📋 История", "👤 Профиль",
+    "🚀 Поделиться", "📁 Проекты", "❓ Помощь", "💬 Новый диалог"
+}
+
 @dp.message(F.text & ~F.text.startswith("/"))
 async def handle_message(msg: Message, state: FSMContext):
     if await state.get_state(): return
+    if msg.text.strip() in MENU_BUTTONS: return
 
     user = await get_user(msg.from_user.id, msg.from_user.username or "")
     text = msg.text.strip()
