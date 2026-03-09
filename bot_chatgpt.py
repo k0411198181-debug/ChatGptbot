@@ -37,7 +37,7 @@ PRICE_WEEK      = int(os.getenv("PRICE_WEEK",  "150"))
 PRICE_MONTH     = int(os.getenv("PRICE_MONTH", "399"))
 DB_PATH         = os.getenv("DB_PATH", "chatgpt.db")
 COOLDOWN_SEC    = 10
-LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy_yurist_bot")
+LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy\\_yurist\\_bot")
 
 FREE_LIMIT      = 3   # бесплатных вопросов в день
 MAX_MSG_LEN     = 4096  # лимит Telegram на одно сообщение
@@ -172,7 +172,6 @@ PROJECTS_TEXT = """🚀 *Наши проекты*
 ⚖️ *Мой Юрист*
 Юридический помощник по российскому праву.
 Вопросы, документы, жалобы, штрафы, ДТП.
-→ {lawyer_url}
 
 🤖 *ChatGPT Free* (здесь)
 AI-помощник для любых задач на базе GPT-4o.
@@ -648,10 +647,10 @@ async def cmd_share(msg: Message):
 @dp.message(Command("projects"))
 async def cmd_projects(msg: Message):
     await msg.answer(
-        PROJECTS_TEXT.format(lawyer_url=LAWYER_BOT_URL),
+        PROJECTS_TEXT,
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚖️ Адвокат Дьявола", url=LAWYER_BOT_URL)],
+            [InlineKeyboardButton(text="⚖️ Мой Юрист", url="https://t.me/moy_yurist_bot")],
         ])
     )
 
@@ -823,7 +822,13 @@ async def handle_share_btn(msg: Message):
 
 @dp.message(F.text == "📁 Проекты")
 async def handle_projects_btn(msg: Message):
-    await cmd_projects(msg)
+    await msg.answer(
+        PROJECTS_TEXT,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚖️ Мой Юрист", url="https://t.me/moy_yurist_bot")],
+        ])
+    )
 
 @dp.message(F.text == "❓ Помощь")
 async def handle_help_btn(msg: Message):
