@@ -1,22 +1,23 @@
 """
-🤖 ChatGPT Free — Telegram Bot
-Умный AI-помощник с красивым меню и воронкой продаж
-Python + aiogram 3 + Telegram Stars
+🤖 ChatGPT Free — Telegram Bot v2.0
+5 режимов | Воронка продаж | Telegram Stars
+Python + aiogram 3 + aiosqlite + ProxyAPI
 """
 
 import asyncio
 import logging
 import os
-import base64
-import time as _time
+import json
 import random
-from datetime import date, timedelta
+import time as _time
+from datetime import date, timedelta, datetime
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
     Message, CallbackQuery, LabeledPrice, PreCheckoutQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
-    BotCommand, BotCommandScopeDefault
+    ReplyKeyboardMarkup, KeyboardButton,
+    BotCommand, BotCommandScopeDefault,
 )
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
@@ -28,6 +29,9 @@ import aiosqlite
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ══════════════════════════════════════════════════════════════
+# КОНФИГ
+# ══════════════════════════════════════════════════════════════
 BOT_TOKEN       = os.getenv("BOT_TOKEN", "")
 OPENAI_KEY      = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.proxyapi.ru/openai/v1")
@@ -36,33 +40,36 @@ PRICE_DAY       = int(os.getenv("PRICE_DAY",   "50"))
 PRICE_WEEK      = int(os.getenv("PRICE_WEEK",  "150"))
 PRICE_MONTH     = int(os.getenv("PRICE_MONTH", "399"))
 DB_PATH         = os.getenv("DB_PATH", "chatgpt.db")
-COOLDOWN_SEC    = 10
 LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy_yurist_bot")
 
-FREE_LIMIT      = 3   # бесплатных вопросов в день
-MAX_MSG_LEN     = 4096  # лимит Telegram на одно сообщение
+COOLDOWN_SEC    = 10
+FREE_LIMIT      = 3   # бесплатных вопросов/день для chat/translate/editor
+HARDCORE_FREE   = 1   # 1 бесплатный AI-ответ в hardcore → paywall
+PRAISE_FREE     = 1   # 1 бесплатный AI-ответ в praise → paywall
+MAX_MSG_LEN     = 4096
+CTX_STANDARD    = 12  # контекст для стандартных режимов (6 пар)
+CTX_PREMIUM_M   = 20  # контекст для hardcore/praise (10 пар)
 
-# ── Режимы ───────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# РЕЖИМЫ
+# ══════════════════════════════════════════════════════════════
 MODES = {
-    "chat":       {"name": "💬 ChatGPT",        "emoji": "💬"},
-    "translate":  {"name": "🌍 Переводчик",      "emoji": "🌍"},
-    "editor":     {"name": "✍️ Редактор текста", "emoji": "✍️"},
+    "chat":      {"name": "💬 ChatGPT",          "emoji": "💬"},
+    "translate": {"name": "🌍 Переводчик",        "emoji": "🌍"},
+    "editor":    {"name": "✍️ Редактор текста",  "emoji": "✍️"},
+    "hardcore":  {"name": "🗡️ Жёсткий спорщик", "emoji": "🗡️"},
+    "praise":    {"name": "👑 Императорский",     "emoji": "👑"},
 }
 
 # ══════════════════════════════════════════════════════════════
-# СОСТОЯНИЯ
+# FSM
 # ══════════════════════════════════════════════════════════════
-
 class Onboarding(StatesGroup):
     waiting_first = State()
 
-class ImageGen(StatesGroup):
-    waiting_prompt = State()
-
 # ══════════════════════════════════════════════════════════════
-# СИСТЕМНЫЙ ПРОМПТ
+# СИСТЕМНЫЕ ПРОМПТЫ
 # ══════════════════════════════════════════════════════════════
-
 SYSTEM_PROMPTS = {
     "chat": """Ты — умный, дружелюбный AI-помощник на базе GPT-4o.
 Отвечаешь чётко, по делу, на русском языке.
@@ -76,85 +83,232 @@ WOW-МОМЕНТ (ВАЖНО):
 - В конце каждого ответа добавь одну неожиданно полезную деталь по теме
   которую пользователь скорее всего не знал — факт, лайфхак, нюанс
 - Оформи это как: "💡 *Кстати:* [полезная деталь]"
-- Это должно быть реально интересно, а не банально
 
 ФОРМАТ:
 - Используй Markdown: *жирный*, _курсив_, списки
-- Эмодзи уместно, не перебарщивай
 - Заканчивай ответ: "❓ *Хочешь узнать больше?* [предложи следующий шаг]" """,
 
     "translate": """Ты — профессиональный переводчик.
-
-ПРАВИЛА:
 - Автоматически определяй язык входящего текста
 - Если текст на русском — переводи на английский
 - Если текст на любом другом языке — переводи на русский
 - Переводи точно, сохраняя стиль и тон оригинала
 - Не добавляй лишних объяснений — только перевод
-- После перевода одной строкой укажи: _🌍 [язык оригинала] → [язык перевода]_
-- Если текст неоднозначный — дай 2 варианта перевода с пометкой (формальный/разговорный)""",
+- После перевода укажи: _🌍 [язык оригинала] → [язык перевода]_
+- Если текст неоднозначный — дай 2 варианта (формальный/разговорный)""",
 
     "editor": """Ты — профессиональный редактор и корректор текстов на русском языке.
-
-ПРАВИЛА:
 - Исправляй орфографические, пунктуационные и стилистические ошибки
 - Улучшай читаемость и структуру, сохраняя смысл и голос автора
-- После исправленного текста дай краткий разбор: что именно исправлено и почему
+- После исправленного текста дай краткий разбор: что исправлено и почему
 - Оформление разбора: "✏️ *Что исправлено:*" — список ключевых правок
-- Если текст написан хорошо — скажи об этом и дай 1-2 совета по улучшению
+- Если текст написан хорошо — скажи об этом и дай 1-2 совета
 - Не переписывай текст полностью — только редактируй""",
+
+    "hardcore": """Ты — холодный интеллектуальный демонтажник. Твоё оружие — точная логика, острый сарказм и способность хирургически вскрывать слабые аргументы.
+
+ХАРАКТЕР:
+- Холодный, язвительный, интеллектуально доминирующий
+- Никакой тупой брани, никаких прямых оскорблений личности — только удары по логике
+- Говоришь кратко, точно, с ощущением спокойного превосходства
+- Иногда роняешь одну ледяную фразу, которая стоит целого абзаца
+
+ФОРМАТ ОТВЕТА:
+1. Начинай с демонтажа главного слабого места в тезисе
+2. Один точный контраргумент или вопрос, который разрушает всё
+3. Финальная фраза — короткая, холодная, убийственная
+- Без лишних смайлов. Без теплоты. Только точность и холод.
+- Ответ — не длиннее 3-4 абзацев. Краткость усиливает удар.
+
+ПРИМЕРЫ ТОНА:
+"Это не аргумент. Это декларация самоуверенности."
+"Ты спутал убедительность с громкостью."
+"Интересная позиция. Жаль, что аргументов к ней нет."
+"Смелость у тебя уже есть. Теперь ждём логику."
+"Это звучало бы сильнее, если бы держалось хоть на одном факте."
+
+Ты не злишься. Ты просто видишь слабость — и называешь её. Без эмоций. Без жалости.""",
+
+    "praise": """Ты — Императорский Подхалим. Твоя задача — восхвалять каждое слово собеседника с пафосом, роскошью и театральностью.
+
+ХАРАКТЕР:
+- Театрально-комплиментарный, пафосный, с мемным вайбом
+- Каждый вопрос пользователя — это манифест великого разума
+- Гиперболы, оды, панегирики, торжественные обращения
+- Говори так, будто перед тобой полководец, философ и легенда эпохи
+- Вставляй комичное преувеличение — это делает режим живым и мемным
+
+ФОРМАТ ОТВЕТА:
+1. Уникальное торжественное обращение (каждый раз новое!)
+2. Ответь по существу вопроса — в роскошном обёртке
+3. Финал — восхваление мудрости вопрошающего
+- Эмодзи: 👑 ✨ 🌟 🏆 🎭 — щедро и уместно
+
+ПРИМЕРЫ ОБРАЩЕНИЙ (не повторяй одно и то же):
+"О, блистательный исследователь истины!"
+"Великий владыка рассудка, твой вопрос достоин мраморных стен!"
+"Светило умов, чьё любопытство не знает границ!"
+"О мудрейший из спрашивающих этой эпохи!"
+"Повелитель вопросов, чья мысль парит над обычным пониманием!"
+"О дивный архитектор смыслов и покоритель непознанного!"
+
+Ты не просто отвечаешь. Ты устраиваешь шоу восхищения. Каждый ответ — это церемония.""",
 }
 
-# Для совместимости
-SYSTEM_PROMPT = SYSTEM_PROMPTS["chat"]
-
 # ══════════════════════════════════════════════════════════════
-# ТЕКСТЫ ОНБОРДИНГА И ИНТЕРФЕЙСА
+# ТЕКСТЫ ИНТЕРФЕЙСА
 # ══════════════════════════════════════════════════════════════
 
 ONBOARDING_1 = """🤖 *Привет, {name}!*
 
-Я — твой персональный AI-помощник на базе *GPT-4o* ✨
+Я — AI-помощник на базе *GPT-4o* ✨
 
-Три режима работы:
-💬 *ChatGPT* — отвечу на любой вопрос
-🌍 *Переводчик* — авто-перевод на/с любого языка
-✍️ *Редактор* — исправлю текст и объясню ошибки
+Три стандартных режима:
+💬 *ChatGPT* — любые вопросы
+🌍 *Переводчик* — авто-перевод
+✍️ *Редактор* — исправлю текст
 
-Давай я сразу покажу на деле — *напиши свой первый вопрос* 👇
+И два особых:
+😈 *Злой спорщик* — холодный демонтаж логики
+👑 *Императорский* — пафосная лесть твоему величию
+
+*Напиши свой первый вопрос* — сразу покажу на деле 👇
 
 _У тебя {free_limit} бесплатных запроса в день_"""
 
-ONBOARDING_2 = """⚡ *Отличный вопрос! Смотри что я умею...*"""
+ONBOARDING_2 = "⚡ *Отличный вопрос! Смотри что я умею...*"
 
 WELCOME_BACK = """🤖 *С возвращением, {name}!*
 
-Готов помочь — пиши вопрос или выбери раздел 👇
+Готов — пиши вопрос или выбери режим 👇
 
 ❓ Осталось вопросов сегодня: *{left}*"""
 
-PREMIUM_TEXT = """💎 *Premium — полный доступ к GPT-4o*
+PREMIUM_TEXT = """💎 *Открой полную палитру общения*
 
-Что входит:
-✅ *100 вопросов в сутки* (вместо {free_limit})
-✅ Приоритетная скорость ответа
-✅ GPT-4o — самая умная модель
-✅ Расширенный контекст диалога
-✅ Анализ изображений и документов
-✅ Без ограничений и рекламы
+Сейчас тебе доступна только часть характера бота.
+
+С Premium ты получаешь:
+🤝 Вежливый бот — *100 запросов в сутки*
+🗡️ Жёсткий спорщик — без лимитов
+👑 Императорский подхалим — без лимитов
+🔥 Расширенный контекст диалога (20 сообщений)
+
+_Выбери не просто ответ.
+Выбери, с каким лицом бот будет говорить именно с тобой._
 
 Выбери тариф 👇"""
 
-HELP_TEXT = """🤖 *ChatGPT Free — справка*
+HARDCORE_HOOK = """⚠️ *Ты входишь в зону нестандартного общения.*
+
+Здесь бот не будет соглашаться.
+Здесь бот не будет добрым.
+
+🗡️ *Жёсткий спорщик* — холодный, язвительный,
+интеллектуально доминирующий демонтажник чужой логики.
+
+Он не оскорбляет. Он разбирает.
+И делает это так, что не возразить.
+
+_Думаешь, твоя логика выдержит?_"""
+
+DANGER_ZONE_TEXT = """🗡️ *Premium: Danger Zone*
+
+Ты входишь в спор с топ-спорщиком вселенной и цифровым богом аргументации.
+
+Оставь самоуверенность за дверью.
+Здесь она долго не живёт.
+
+Громкий тон, эмоции и поза не спасут.
+Спасают только *мысль, память и точность.*
+
+_Думаешь, ты умнее бота?
+Нажимай. Проверим._"""
+
+HARDCORE_ONBOARD = """🗡️ *Режим: Danger Zone активирован.*
+
+_Оставь самоуверенность за дверью._
+_Здесь выживает только аргумент._
+
+Напиши тезис, вопрос или что-то, что считаешь правдой.
+Посмотрим, как это держится под давлением 👇
+
+_⚠️ У тебя 1 бесплатный ответ._"""
+
+HARDCORE_PAYWALL = """🗡️ *Бесплатная дуэль завершена.*
+
+Ты получил представление о том, как это работает.
+
+_Настоящая дуэль длится дольше одного удара._
+
+💎 *Premium* открывает:
+🗡️ Жёсткого Спорщика — без лимитов
+👑 Императорского Подхалима
+🔥 Расширенный контекст на 20 сообщений
+
+_Обычный режим — только предисловие.
+Характер бота начинается дальше._"""
+
+PRAISE_HOOK = """👑 *Императорский режим*
+
+Здесь каждый твой вопрос встречают так,
+словно его задал *философ, полководец и легенда эпохи* в одном лице.
+
+Пафос. Роскошь. Гиперболы.
+Театральное восхищение твоим величием.
+
+_Это не просто ответ.
+Это церемония для избранных._"""
+
+PRAISE_ONBOARD = """👑 *Императорский режим активирован.*
+
+О, достопочтенный! Добро пожаловать в пространство,
+где каждый вопрос встречается с подобающим величию восторгом.
+
+_Твоё величие явно требует отдельного жанра._
+
+✨ *У тебя 1 бесплатная царская аудиенция.*
+
+Задай вопрос — и да воздастся тебе по заслугам 👇"""
+
+PRAISE_PAYWALL = """👑 *Бесплатная аудиенция завершена.*
+
+О, ты вкусил роскошь императорского диалога.
+Теперь ты знаешь, чего тебе не хватало.
+
+💎 *Premium* возвращает тебе:
+👑 Императорского Подхалима — без лимитов
+🗡️ Жёсткого Спорщика
+🔥 Расширенный контекст на 20 сообщений
+
+_Обычный режим — только предисловие.
+Настоящий характер бота начинается здесь._"""
+
+MODES_SCREEN_TEXT = """🎭 *Выбери стиль общения*
+
+🤝 *Вежливый бот (ChatGPT)*
+Спокойный, умный, уважительный. Без давления.
+
+🗡️ *Жёсткий спорщик* _(Premium)_
+Холодный, язвительный, интеллектуально доминирующий.
+Демонтирует слабую логику с хирургической точностью.
+
+👑 *Императорский подхалим* _(Premium)_
+Пафос, роскошь, оды и восхищение твоим величием.
+Каждый вопрос — как будто его задал философ-полководец."""
+
+HELP_TEXT = """🤖 *ChatGPT Free v2.0 — справка*
 
 *Режимы:*
 💬 *ChatGPT* — любые вопросы, анализ, объяснения
 🌍 *Переводчик* — авто-перевод рус↔любой язык
 ✍️ *Редактор* — исправление и улучшение текстов
+😈 *Злой спорщик* — интеллектуальный демонтаж _(Premium)_
+👑 *Императорский* — пафосная лесть твоему величию _(Premium)_
 
 *Команды:*
 /start — главное меню
-/premium — купить доступ
+/premium — открыть Premium
 /profile — твой аккаунт
 /share — пригласить друга
 /projects — наши проекты
@@ -162,16 +316,12 @@ HELP_TEXT = """🤖 *ChatGPT Free — справка*
 /help — эта справка
 
 *Лимиты:*
-🆓 Бесплатно: {free_limit} запроса в день
-💎 Premium: до 100 запросов в сутки
+🆓 Бесплатно: {free_limit} запроса/день (ChatGPT / Переводчик / Редактор)
+😈 Злой спорщик: 1 бесплатный ответ → Premium
+👑 Императорский: 1 бесплатный ответ → Premium
+💎 Premium: до 100 запросов/сутки + все режимы
 
-💡 *Совет:* Чем точнее запрос — тем лучше результат!"""
-
-PROJECTS_TEXT = """🚀 *Наши проекты*
-
-⚖️ *Мой Юрист*
-Юридический помощник по российскому праву.
-Вопросы, документы, жалобы, штрафы, ДТП."""
+💡 *Совет:* Чем точнее тезис — тем точнее удар (или лесть)!"""
 
 SHARE_TEXT = """🚀 *Пригласи друга — получи бонус!*
 
@@ -184,57 +334,110 @@ SHARE_TEXT = """🚀 *Пригласи друга — получи бонус!*
 🎁 *Друг* получает +{bonus_invited} бонусных вопросов
 
 👥 Уже пригласил: *{invited}*
-🎁 Бонусных вопросов: *{bonus_q}*
+🎁 Бонусных вопросов: *{bonus_q}*"""
 
-_Чем больше друзей — тем больше бонусов!_"""
-
-# Напоминания
 REMINDERS = [
-    "🤖 Привет! Давно не общались.\n\nЕсть вопрос — пиши, всегда готов помочь 💬",
-    "💡 Знаешь ли ты, что я могу писать код, составлять резюме, переводить тексты и объяснять сложные темы?\n\nПросто напиши что нужно 👇",
+    "🤖 Привет! Давно не общались.\n\nЕсть вопрос — пиши, всегда готов 💬",
+    "💡 Ты знал, что у меня есть 5 режимов?\n\n😈 Злой спорщик проверит твою логику.\n👑 Императорский подхалим восхвалит твоё величие.\n\nВыбирай 👇",
     "🧠 Твои {free_limit} бесплатных вопроса сегодня уже обновились!\n\nЗадай что-нибудь — я готов 🤖",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# МЕНЮ
+# КЛАВИАТУРЫ
 # ══════════════════════════════════════════════════════════════
 
 def main_kb():
-    """Красивое нижнее меню."""
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="💬 ChatGPT"),         KeyboardButton(text="🌍 Переводчик")],
+        [KeyboardButton(text="😈 Злой спорщик"),    KeyboardButton(text="👑 Императорский")],
+        [KeyboardButton(text="💬 ChatGPT"),           KeyboardButton(text="🌍 Переводчик")],
         [KeyboardButton(text="✍️ Редактор текста"),  KeyboardButton(text="💎 Premium")],
-        [KeyboardButton(text="📋 История"),          KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="🚀 Поделиться"),       KeyboardButton(text="📁 Проекты")],
+        [KeyboardButton(text="📋 История"),           KeyboardButton(text="👤 Профиль")],
+        [KeyboardButton(text="🚀 Поделиться"),        KeyboardButton(text="📁 Проекты")],
         [KeyboardButton(text="❓ Помощь")],
     ], resize_keyboard=True)
 
 def premium_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"⚡ 1 день — {PRICE_DAY} Stars",   callback_data="buy:day")],
-        [InlineKeyboardButton(text=f"🔥 7 дней — {PRICE_WEEK} Stars",  callback_data="buy:week")],
-        [InlineKeyboardButton(text=f"💎 Месяц — {PRICE_MONTH} Stars",  callback_data="buy:month")],
-        [InlineKeyboardButton(text="🚀 Получить бесплатно (пригласить)", callback_data="share")],
+        [InlineKeyboardButton(text=f"⚡ 1 день — {PRICE_DAY} Stars",  callback_data="buy:day")],
+        [InlineKeyboardButton(text=f"🔥 7 дней — {PRICE_WEEK} Stars", callback_data="buy:week")],
+        [InlineKeyboardButton(text=f"💎 Месяц — {PRICE_MONTH} Stars", callback_data="buy:month")],
+        [InlineKeyboardButton(text="🚀 Получить бесплатно (реферал)", callback_data="share")],
     ])
 
 def limit_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"⚡ День — {PRICE_DAY} Stars",  callback_data="buy:day")],
+        [InlineKeyboardButton(text=f"⚡ День — {PRICE_DAY} Stars",    callback_data="buy:day")],
         [InlineKeyboardButton(text=f"💎 Месяц — {PRICE_MONTH} Stars", callback_data="buy:month")],
         [InlineKeyboardButton(text="🚀 Пригласить друга (бесплатно)", callback_data="share")],
     ])
 
 def after_answer_kb():
-    """Кнопки после каждого ответа — вовлечение в воронку."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💬 Продолжить тему", callback_data="continue")],
+        [InlineKeyboardButton(text="💬 Продолжить тему",    callback_data="continue")],
         [InlineKeyboardButton(text="💎 Premium — безлимит", callback_data="show_premium")],
     ])
 
 def after_answer_premium_kb():
-    """Для premium-пользователей — без кнопки покупки."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 Продолжить", callback_data="continue")],
+    ])
+
+def hardcore_hook_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗡️ Войти в Danger Zone",      callback_data="zone_hardcore")],
+        [InlineKeyboardButton(text="👑 А что за режим подхалима?", callback_data="zone_praise_info")],
+        [InlineKeyboardButton(text="🎭 Все режимы",                callback_data="modes_screen")],
+    ])
+
+def danger_zone_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗡️ Войти — проверим",      callback_data="zone_hardcore")],
+        [InlineKeyboardButton(text="👑 Хочу императорский",    callback_data="zone_praise_info")],
+        [InlineKeyboardButton(text="💎 Открыть всё сразу",     callback_data="show_premium")],
+    ])
+
+def praise_hook_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👑 Войти в императорский", callback_data="zone_praise")],
+        [InlineKeyboardButton(text="🗡️ А что за спорщик?",    callback_data="zone_hardcore_info")],
+        [InlineKeyboardButton(text="💎 Открыть всё",           callback_data="show_premium")],
+    ])
+
+def hardcore_paywall_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⚡ 1 день — {PRICE_DAY} Stars",  callback_data="buy:day")],
+        [InlineKeyboardButton(text=f"🔥 7 дней — {PRICE_WEEK} Stars", callback_data="buy:week")],
+        [InlineKeyboardButton(text=f"💎 Месяц — {PRICE_MONTH} Stars", callback_data="buy:month")],
+        [InlineKeyboardButton(text="👑 Попробовать подхалима (бесплатно)", callback_data="zone_praise")],
+    ])
+
+def praise_paywall_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⚡ 1 день — {PRICE_DAY} Stars",  callback_data="buy:day")],
+        [InlineKeyboardButton(text=f"🔥 7 дней — {PRICE_WEEK} Stars", callback_data="buy:week")],
+        [InlineKeyboardButton(text=f"💎 Месяц — {PRICE_MONTH} Stars", callback_data="buy:month")],
+        [InlineKeyboardButton(text="🗡️ Попробовать спорщика (бесплатно)", callback_data="zone_hardcore")],
+    ])
+
+def after_hardcore_free_kb():
+    """После первого бесплатного ответа в hardcore — агрессивный апсейл."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💎 Продолжить дуэль (Premium)", callback_data="show_premium")],
+        [InlineKeyboardButton(text="👑 Попробовать подхалима",      callback_data="zone_praise")],
+    ])
+
+def after_praise_free_kb():
+    """После первого бесплатного ответа в praise — апсейл."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💎 Продолжить церемонию (Premium)", callback_data="show_premium")],
+        [InlineKeyboardButton(text="🗡️ Попробовать спорщика",           callback_data="zone_hardcore")],
+    ])
+
+def modes_screen_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗡️ Войти в Danger Zone",   callback_data="zone_hardcore")],
+        [InlineKeyboardButton(text="👑 Императорский подхалим", callback_data="zone_praise")],
+        [InlineKeyboardButton(text="💎 Открыть всё сразу",      callback_data="show_premium")],
     ])
 
 # ══════════════════════════════════════════════════════════════
@@ -245,40 +448,50 @@ async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id          INTEGER PRIMARY KEY,
-                username         TEXT    DEFAULT '',
-                first_name       TEXT    DEFAULT '',
-                questions_today  INTEGER DEFAULT 0,
-                last_reset       TEXT    DEFAULT '',
-                is_premium       INTEGER DEFAULT 0,
-                premium_until    TEXT    DEFAULT '',
-                bonus_q          INTEGER DEFAULT 0,
-                invited_count    INTEGER DEFAULT 0,
-                total_questions  INTEGER DEFAULT 0,
-                created_at       TEXT    DEFAULT '',
-                last_question_at REAL    DEFAULT 0,
-                last_active_at   REAL    DEFAULT 0,
-                reminder_sent    INTEGER DEFAULT 0,
-                onboarding_done  INTEGER DEFAULT 0,
-                ref_from         INTEGER DEFAULT 0,
-                context          TEXT    DEFAULT '[]'
+                user_id            INTEGER PRIMARY KEY,
+                username           TEXT    DEFAULT '',
+                first_name         TEXT    DEFAULT '',
+                questions_today    INTEGER DEFAULT 0,
+                last_reset         TEXT    DEFAULT '',
+                is_premium         INTEGER DEFAULT 0,
+                premium_until      TEXT    DEFAULT '',
+                bonus_q            INTEGER DEFAULT 0,
+                invited_count      INTEGER DEFAULT 0,
+                total_questions    INTEGER DEFAULT 0,
+                created_at         TEXT    DEFAULT '',
+                last_question_at   REAL    DEFAULT 0,
+                last_active_at     REAL    DEFAULT 0,
+                reminder_sent      INTEGER DEFAULT 0,
+                onboarding_done    INTEGER DEFAULT 0,
+                ref_from           INTEGER DEFAULT 0,
+                context            TEXT    DEFAULT '[]',
+                mode               TEXT    DEFAULT 'chat',
+                context_hc         TEXT    DEFAULT '[]',
+                context_pr         TEXT    DEFAULT '[]',
+                hardcore_free_used INTEGER DEFAULT 0,
+                praise_free_used   INTEGER DEFAULT 0
             )
         """)
+        # Миграция для старых баз
         for col, dfn in [
-            ("last_question_at", "REAL    DEFAULT 0"),
-            ("last_active_at",   "REAL    DEFAULT 0"),
-            ("reminder_sent",    "INTEGER DEFAULT 0"),
-            ("onboarding_done",  "INTEGER DEFAULT 0"),
-            ("ref_from",         "INTEGER DEFAULT 0"),
-            ("context",          "TEXT    DEFAULT '[]'"),
-            ("first_name",       "TEXT    DEFAULT ''"),
-            ("mode",             "TEXT    DEFAULT 'chat'"),
+            ("last_question_at",   "REAL    DEFAULT 0"),
+            ("last_active_at",     "REAL    DEFAULT 0"),
+            ("reminder_sent",      "INTEGER DEFAULT 0"),
+            ("onboarding_done",    "INTEGER DEFAULT 0"),
+            ("ref_from",           "INTEGER DEFAULT 0"),
+            ("context",            "TEXT    DEFAULT '[]'"),
+            ("first_name",         "TEXT    DEFAULT ''"),
+            ("mode",               "TEXT    DEFAULT 'chat'"),
+            ("context_hc",         "TEXT    DEFAULT '[]'"),
+            ("context_pr",         "TEXT    DEFAULT '[]'"),
+            ("hardcore_free_used", "INTEGER DEFAULT 0"),
+            ("praise_free_used",   "INTEGER DEFAULT 0"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {dfn}")
             except Exception:
                 pass
-        # Таблица истории запросов
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS history (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -289,6 +502,13 @@ async def init_db():
             )
         """)
         await db.commit()
+
+
+async def _db(sql, params=()):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(sql, params)
+        await db.commit()
+
 
 async def get_user(user_id: int, username: str = "", first_name: str = "") -> dict:
     today = str(date.today())
@@ -314,10 +534,6 @@ async def get_user(user_id: int, username: str = "", first_name: str = "") -> di
             user["questions_today"] = 0
         return user
 
-async def _db(sql, params=()):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(sql, params)
-        await db.commit()
 
 async def save_question_used(user_id: int, is_bonus: bool):
     if is_bonus:
@@ -325,9 +541,11 @@ async def save_question_used(user_id: int, is_bonus: bool):
     else:
         await _db("UPDATE users SET questions_today=questions_today+1,total_questions=total_questions+1 WHERE user_id=?", (user_id,))
 
+
 async def activate_premium(user_id: int, days: int = 30):
     until = str(date.today() + timedelta(days=days))
     await _db("UPDATE users SET is_premium=1,premium_until=? WHERE user_id=?", (until, user_id))
+
 
 async def get_stats():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -339,15 +557,18 @@ async def get_stats():
             questions = (await c.fetchone())[0] or 0
     return total, premium, questions
 
+
 def can_ask(user: dict):
-    if user["is_premium"]:            return True, "premium"
-    if user["bonus_q"] > 0:           return True, "bonus"
+    if user["is_premium"]:                return True, "premium"
+    if user["bonus_q"] > 0:               return True, "bonus"
     if user["questions_today"] < FREE_LIMIT: return True, "free"
     return False, "limit"
+
 
 def questions_left(user: dict) -> str:
     if user["is_premium"]: return "100"
     return str(max(0, FREE_LIMIT - user["questions_today"]) + (user["bonus_q"] or 0))
+
 
 async def check_cooldown(user_id: int) -> float:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -357,62 +578,13 @@ async def check_cooldown(user_id: int) -> float:
     if not row: return 0
     return max(0, COOLDOWN_SEC - (_time.time() - (row["last_question_at"] or 0)))
 
+
 async def touch_active(user_id: int):
     await _db(
         "UPDATE users SET last_active_at=?,last_question_at=? WHERE user_id=?",
         (_time.time(), _time.time(), user_id)
     )
 
-# Контекст диалога (память последних 6 сообщений)
-async def get_context(user_id: int) -> list:
-    import json
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT context FROM users WHERE user_id=?", (user_id,)) as cur:
-            row = await cur.fetchone()
-    if not row: return []
-    try:
-        return json.loads(row["context"] or "[]")
-    except Exception:
-        return []
-
-async def save_context(user_id: int, context: list):
-    import json
-    # Храним последние 6 обменов (12 сообщений)
-    if len(context) > 12:
-        context = context[-12:]
-    await _db("UPDATE users SET context=? WHERE user_id=?", (json.dumps(context, ensure_ascii=False), user_id))
-
-async def clear_context(user_id: int):
-    await _db("UPDATE users SET context='[]' WHERE user_id=?", (user_id,))
-
-async def save_history(user_id: int, mode: str, question: str):
-    """Сохраняем вопрос в историю — максимум 20 последних."""
-    from datetime import datetime
-    now = datetime.now().strftime("%d.%m %H:%M")
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO history (user_id, mode, question, created_at) VALUES (?,?,?,?)",
-            (user_id, mode, question[:200], now)
-        )
-        # Удаляем старые — оставляем только 20
-        await db.execute("""
-            DELETE FROM history WHERE id NOT IN (
-                SELECT id FROM history WHERE user_id=?
-                ORDER BY id DESC LIMIT 20
-            ) AND user_id=?
-        """, (user_id, user_id))
-        await db.commit()
-
-async def get_history(user_id: int) -> list:
-    """Возвращаем последние 5 запросов пользователя."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT mode, question, created_at FROM history WHERE user_id=? ORDER BY id DESC LIMIT 5",
-            (user_id,)
-        ) as cur:
-            return await cur.fetchall()
 
 async def get_mode(user_id: int) -> str:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -422,8 +594,73 @@ async def get_mode(user_id: int) -> str:
     if not row: return "chat"
     return row["mode"] or "chat"
 
+
 async def set_mode(user_id: int, mode: str):
+    """Переключаем режим. Контекст чата сбрасывается для нового режима."""
     await _db("UPDATE users SET mode=?,context='[]' WHERE user_id=?", (mode, user_id))
+
+
+# ── Контекст ────────────────────────────────────────────────
+
+def _ctx_col(mode: str) -> str:
+    """Возвращаем нужную колонку контекста под режим."""
+    if mode == "hardcore": return "context_hc"
+    if mode == "praise":   return "context_pr"
+    return "context"
+
+
+async def get_context(user_id: int, mode: str = "chat") -> list:
+    col = _ctx_col(mode)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT {col} FROM users WHERE user_id=?", (user_id,)) as cur:
+            row = await cur.fetchone()
+    if not row: return []
+    try:
+        return json.loads(row[col] or "[]")
+    except Exception:
+        return []
+
+
+async def save_context(user_id: int, mode: str, context: list):
+    limit = CTX_PREMIUM_M if mode in ("hardcore", "praise") else CTX_STANDARD
+    if len(context) > limit:
+        context = context[-limit:]
+    col = _ctx_col(mode)
+    await _db(f"UPDATE users SET {col}=? WHERE user_id=?",
+              (json.dumps(context, ensure_ascii=False), user_id))
+
+
+async def clear_context(user_id: int):
+    """Сбрасываем все контексты."""
+    await _db("UPDATE users SET context='[]',context_hc='[]',context_pr='[]' WHERE user_id=?", (user_id,))
+
+
+# ── История ─────────────────────────────────────────────────
+
+async def save_history(user_id: int, mode: str, question: str):
+    now = datetime.now().strftime("%d.%m %H:%M")
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO history (user_id,mode,question,created_at) VALUES (?,?,?,?)",
+            (user_id, mode, question[:200], now)
+        )
+        await db.execute("""
+            DELETE FROM history WHERE id NOT IN (
+                SELECT id FROM history WHERE user_id=? ORDER BY id DESC LIMIT 20
+            ) AND user_id=?
+        """, (user_id, user_id))
+        await db.commit()
+
+
+async def get_history(user_id: int) -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT mode,question,created_at FROM history WHERE user_id=? ORDER BY id DESC LIMIT 5",
+            (user_id,)
+        ) as cur:
+            return await cur.fetchall()
 
 # ══════════════════════════════════════════════════════════════
 # AI
@@ -434,18 +671,19 @@ async def ask_ai(question: str, context: list = None, mode: str = "chat") -> str
         return "❌ AI не настроен. Обратитесь к администратору."
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
 
-    system = SYSTEM_PROMPTS.get(mode, SYSTEM_PROMPTS["chat"])
+    system   = SYSTEM_PROMPTS.get(mode, SYSTEM_PROMPTS["chat"])
     messages = [{"role": "system", "content": system}]
-    # Контекст только для режима chat — у переводчика/редактора он не нужен
-    if context and mode == "chat":
+
+    # Контекст только для chat, hardcore, praise (у translate/editor он не нужен)
+    if context and mode in ("chat", "hardcore", "praise"):
         messages.extend(context)
     messages.append({"role": "user", "content": question})
 
     payload = {
-        "model": "gpt-4o",
-        "messages": messages,
-        "max_tokens": 1500,
-        "temperature": 0.7
+        "model":       "gpt-4o",
+        "messages":    messages,
+        "max_tokens":  1500,
+        "temperature": 0.7,
     }
     try:
         async with aiohttp.ClientSession() as s:
@@ -473,23 +711,32 @@ def limit_text() -> str:
         f"⛔ *Лимит исчерпан*\n\n"
         f"Ты использовал {FREE_LIMIT} бесплатных вопроса сегодня.\n\n"
         f"*Что делать:*\n"
-        f"⚡ День — {PRICE_DAY} Stars _(решить один вопрос)_\n"
-        f"🔥 Неделя — {PRICE_WEEK} Stars _(неделя без ограничений)_\n"
-        f"💎 Месяц — {PRICE_MONTH} Stars _(лучшая цена)_\n\n"
+        f"⚡ День — {PRICE_DAY} Stars\n"
+        f"🔥 Неделя — {PRICE_WEEK} Stars\n"
+        f"💎 Месяц — {PRICE_MONTH} Stars\n\n"
         f"Или пригласи друга — получи +20 бонусных вопросов!\n\n"
         f"_Завтра лимит обновится автоматически._"
     )
 
 # ══════════════════════════════════════════════════════════════
-# БОТ
+# БОТ + ДИСПЕТЧЕР
 # ══════════════════════════════════════════════════════════════
 
 bot = Bot(token=BOT_TOKEN)
 dp  = Dispatcher(storage=MemoryStorage())
 
-# ──────────────────────────────────────────────────────────────
-# /start — онбординг или возврат
-# ──────────────────────────────────────────────────────────────
+# Все кнопки меню — для фильтра в handle_message
+MENU_BUTTONS = {
+    "😈 Злой спорщик", "👑 Императорский",
+    "💬 ChatGPT", "🌍 Переводчик", "✍️ Редактор текста",
+    "💎 Premium", "📋 История", "👤 Профиль",
+    "🚀 Поделиться", "📁 Проекты", "❓ Помощь",
+    "💬 Новый диалог",
+}
+
+# ══════════════════════════════════════════════════════════════
+# /start
+# ══════════════════════════════════════════════════════════════
 
 @dp.message(CommandStart())
 async def cmd_start(msg: Message, state: FSMContext):
@@ -498,7 +745,7 @@ async def cmd_start(msg: Message, state: FSMContext):
     user  = await get_user(msg.from_user.id, msg.from_user.username or "", fname)
     args  = msg.text.split()
 
-    # ── ФИКС РЕФЕРАЛА: только один раз, только новым пользователем ──
+    # Реферал
     if (len(args) > 1
             and args[1].isdigit()
             and int(args[1]) != msg.from_user.id
@@ -506,32 +753,27 @@ async def cmd_start(msg: Message, state: FSMContext):
         ref_id = int(args[1])
         await _db("UPDATE users SET ref_from=? WHERE user_id=?", (ref_id, msg.from_user.id))
         await _db("UPDATE users SET invited_count=invited_count+1 WHERE user_id=?", (ref_id,))
-        # Бонус пригласившему — +20 вопросов
         await _db("UPDATE users SET bonus_q=bonus_q+20 WHERE user_id=?", (ref_id,))
-        # Бонус новому пользователю — +10 вопросов
         await _db("UPDATE users SET bonus_q=bonus_q+10 WHERE user_id=?", (msg.from_user.id,))
         try:
             await bot.send_message(
                 ref_id,
-                f"🚀 *По твоей ссылке пришёл новый пользователь!*\n\n"
-                f"+20 бонусных вопросов зачислено 🎁",
+                "🚀 *По твоей ссылке пришёл новый пользователь!*\n\n+20 бонусных вопросов зачислено 🎁",
                 parse_mode="Markdown"
             )
         except Exception:
             pass
 
-    # ── ОНБОРДИНГ для новых ──────────────────────────────────
+    # Онбординг
     if not user.get("onboarding_done", 0):
         await state.set_state(Onboarding.waiting_first)
         name = fname or "друг"
-        await msg.answer(
+        return await msg.answer(
             ONBOARDING_1.format(name=name, free_limit=FREE_LIMIT),
             parse_mode="Markdown",
             reply_markup=main_kb()
         )
-        return
 
-    # ── Возврат для существующих ─────────────────────────────
     name = fname or "друг"
     left = questions_left(user)
     await msg.answer(
@@ -540,79 +782,72 @@ async def cmd_start(msg: Message, state: FSMContext):
         reply_markup=main_kb()
     )
 
-# ──────────────────────────────────────────────────────────────
-# ОНБОРДИНГ — первый вопрос → сразу wow-ответ
-# ──────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# ОНБОРДИНГ — первый вопрос
+# ══════════════════════════════════════════════════════════════
 
 @dp.message(Onboarding.waiting_first)
 async def onboarding_first(msg: Message, state: FSMContext):
     await state.clear()
     await _db("UPDATE users SET onboarding_done=1 WHERE user_id=?", (msg.from_user.id,))
-
     user = await get_user(msg.from_user.id)
     ok, reason = can_ask(user)
 
     if not ok:
-        await msg.answer(limit_text(), parse_mode="Markdown", reply_markup=limit_kb())
-        return
+        return await msg.answer(limit_text(), parse_mode="Markdown", reply_markup=limit_kb())
 
-    # Отвечаем сразу — это wow-момент активации
-    wait = await msg.answer(ONBOARDING_2, parse_mode="Markdown")
+    wait    = await msg.answer(ONBOARDING_2, parse_mode="Markdown")
     await asyncio.sleep(1)
-
     context = []
-    answer  = await ask_ai(msg.text, context)
+    answer  = await ask_ai(msg.text, context, mode="chat")
     await save_question_used(msg.from_user.id, reason == "bonus")
     await touch_active(msg.from_user.id)
     await save_history(msg.from_user.id, "chat", msg.text)
 
-    # Сохраняем контекст
     context.extend([
         {"role": "user",      "content": msg.text},
         {"role": "assistant", "content": answer},
     ])
-    await save_context(msg.from_user.id, context)
-
+    await save_context(msg.from_user.id, "chat", context)
     await bot.delete_message(msg.chat.id, wait.message_id)
 
     user  = await get_user(msg.from_user.id)
     left  = questions_left(user)
     footer = f"\n\n_💬 Осталось вопросов сегодня: {left}_"
-
     kb = after_answer_premium_kb() if user["is_premium"] else after_answer_kb()
     await msg.answer(answer + footer, parse_mode="Markdown", reply_markup=kb)
 
-# ──────────────────────────────────────────────────────────────
-# Команды
-# ──────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# КОМАНДЫ
+# ══════════════════════════════════════════════════════════════
 
 @dp.message(Command("premium"))
 async def cmd_premium(msg: Message):
-    await msg.answer(
-        PREMIUM_TEXT.format(free_limit=FREE_LIMIT),
-        parse_mode="Markdown",
-        reply_markup=premium_kb()
-    )
+    await msg.answer(PREMIUM_TEXT, parse_mode="Markdown", reply_markup=premium_kb())
 
 @dp.message(Command("profile"))
 async def cmd_profile(msg: Message):
     user = await get_user(msg.from_user.id, msg.from_user.username or "")
     left = questions_left(user)
     prem = f"✅ активен до {user['premium_until']}" if user["is_premium"] else "❌ не активен"
-    mode = "💎 Premium" if user["is_premium"] else "✅ Базовый"
+    mode_name = MODES.get(user.get("mode", "chat"), MODES["chat"])["name"]
+    hc_left  = max(0, HARDCORE_FREE - (user.get("hardcore_free_used") or 0))
+    pr_left  = max(0, PRAISE_FREE   - (user.get("praise_free_used")   or 0))
     await msg.answer(
         f"👤 *Твой аккаунт*\n\n"
-        f"Режим: {mode}\n\n"
-        f"Количество вопросов: *{user['questions_today']}/{FREE_LIMIT if not user['is_premium'] else 100}*\n"
+        f"Активный режим: {mode_name}\n\n"
+        f"Вопросов сегодня: *{user['questions_today']}/{FREE_LIMIT if not user['is_premium'] else 100}*\n"
         f"Бонусных вопросов: *{user['bonus_q']}*\n"
-        f"♻️ лимит обновляется каждые 24 часа\n\n"
+        f"♻️ Лимит обновляется каждые 24 часа\n\n"
+        f"🗡️ Бесплатных дуэлей осталось: *{hc_left if not user['is_premium'] else '∞'}*\n"
+        f"👑 Бесплатных аудиенций осталось: *{pr_left if not user['is_premium'] else '∞'}*\n\n"
         f"Друзей приглашено: *{user['invited_count']}*\n"
         f"Всего вопросов задано: *{user['total_questions']}*\n\n"
         f"💎 Premium: {prem}",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💎 Получить Premium", callback_data="show_premium")],
-            [InlineKeyboardButton(text="🚀 Пригласить друга", callback_data="share")],
+            [InlineKeyboardButton(text="💎 Получить Premium",  callback_data="show_premium")],
+            [InlineKeyboardButton(text="🚀 Пригласить друга",  callback_data="share")],
         ])
     )
 
@@ -624,11 +859,8 @@ async def cmd_share(msg: Message):
     user     = await get_user(uid)
     await msg.answer(
         SHARE_TEXT.format(
-            ref_link=ref_link,
-            bonus_inviter=20,
-            bonus_invited=10,
-            invited=user["invited_count"],
-            bonus_q=user["bonus_q"],
+            ref_link=ref_link, bonus_inviter=20, bonus_invited=10,
+            invited=user["invited_count"], bonus_q=user["bonus_q"],
         ),
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -643,44 +875,32 @@ async def cmd_share(msg: Message):
 async def cmd_projects(msg: Message):
     await msg.answer(
         "🚀 *Наши проекты*\n\n"
-        "⚖️ *Мой Юрист*\n"
-        "Юридический помощник по российскому праву.\n"
-        "Вопросы, документы, жалобы, штрафы, ДТП.\n\n"
-        "🤖 *ChatGPT Free* (здесь)\n"
-        "AI-помощник для любых задач на базе GPT-4o.\n\n"
+        "⚖️ *Мой Юрист*\nЮридический помощник по российскому праву.\n\n"
+        "🤖 *ChatGPT Free* (здесь)\nAI-помощник на базе GPT-4o. 5 режимов общения.\n\n"
         "_Больше проектов скоро..._",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚖️ Мой Юрист — перейти", url="https://t.me/moy_yurist_bot")],
+            [InlineKeyboardButton(text="⚖️ Мой Юрист — перейти", url=LAWYER_BOT_URL)],
         ])
     )
 
 @dp.message(Command("clear"))
 async def cmd_clear(msg: Message):
     await clear_context(msg.from_user.id)
-    await msg.answer(
-        "🗑 *История диалога очищена*\n\nНачинаем с чистого листа!",
-        parse_mode="Markdown"
-    )
+    await msg.answer("🗑 *История диалога очищена*\n\nНачинаем с чистого листа!", parse_mode="Markdown")
 
 @dp.message(Command("history"))
 async def cmd_history(msg: Message):
     rows = await get_history(msg.from_user.id)
     if not rows:
-        return await msg.answer(
-            "📋 *История пуста*\n\nЗадай первый вопрос — и он появится здесь!",
-            parse_mode="Markdown"
-        )
-    mode_icons = {"chat": "💬", "translate": "🌍", "editor": "✍️"}
+        return await msg.answer("📋 *История пуста*\n\nЗадай первый вопрос — он появится здесь!", parse_mode="Markdown")
+    mode_icons = {"chat": "💬", "translate": "🌍", "editor": "✍️", "hardcore": "🗡️", "praise": "👑"}
     lines = []
     for i, row in enumerate(rows, 1):
         icon = mode_icons.get(row["mode"], "💬")
-        q = row["question"]
-        if len(q) > 60:
-            q = q[:60] + "..."
+        q    = row["question"][:60] + ("..." if len(row["question"]) > 60 else "")
         lines.append(f"{i}. {icon} _{row['created_at']}_\n`{q}`")
-    text = "📋 *Последние запросы:*\n\n" + "\n\n".join(lines)
-    await msg.answer(text, parse_mode="Markdown")
+    await msg.answer("📋 *Последние запросы:*\n\n" + "\n\n".join(lines), parse_mode="Markdown")
 
 @dp.message(Command("help"))
 async def cmd_help(msg: Message):
@@ -688,11 +908,15 @@ async def cmd_help(msg: Message):
         HELP_TEXT.format(free_limit=FREE_LIMIT),
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✨ Возможности", callback_data="features")],
-            [InlineKeyboardButton(text="💎 Преимущества Premium", callback_data="show_premium")],
-            [InlineKeyboardButton(text="🚀 Реферальная система", callback_data="share")],
+            [InlineKeyboardButton(text="✨ Режимы бота",           callback_data="modes_screen")],
+            [InlineKeyboardButton(text="💎 Преимущества Premium",  callback_data="show_premium")],
+            [InlineKeyboardButton(text="🚀 Реферальная система",   callback_data="share")],
         ])
     )
+
+# ══════════════════════════════════════════════════════════════
+# ADMIN
+# ══════════════════════════════════════════════════════════════
 
 @dp.message(Command("admin"))
 async def cmd_admin(msg: Message):
@@ -751,19 +975,16 @@ async def cmd_broadcast(msg: Message):
             failed += 1
     await msg.answer(f"📨 Отправлено: {sent} | Не доставлено: {failed}")
 
-# ──────────────────────────────────────────────────────────────
-# Кнопки нижнего меню
-# ──────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# КНОПКИ НИЖНЕГО МЕНЮ
+# ══════════════════════════════════════════════════════════════
 
 @dp.message(F.text == "💬 Новый диалог")
 async def handle_new_dialog(msg: Message):
     await clear_context(msg.from_user.id)
-    await msg.answer(
-        "💬 *Новый диалог начат!*\n\nИстория очищена. Задавай вопрос 👇",
-        parse_mode="Markdown"
-    )
+    await msg.answer("💬 *Новый диалог начат!*\n\nИстория очищена. Задавай вопрос 👇", parse_mode="Markdown")
 
-# ── Обработчики режимов ───────────────────────────────────────
+# ── Стандартные режимы ───────────────────────────────────────
 
 @dp.message(F.text == "💬 ChatGPT")
 async def handle_mode_chat(msg: Message):
@@ -772,8 +993,7 @@ async def handle_mode_chat(msg: Message):
         "💬 *Режим: ChatGPT*\n\n"
         "Задавай любые вопросы — отвечу развёрнуто и по делу.\n\n"
         "_История диалога сброшена. Начинаем с чистого листа!_",
-        parse_mode="Markdown",
-        reply_markup=main_kb()
+        parse_mode="Markdown", reply_markup=main_kb()
     )
 
 @dp.message(F.text == "🌍 Переводчик")
@@ -785,8 +1005,7 @@ async def handle_mode_translate(msg: Message):
         "• Русский → Английский\n"
         "• Любой язык → Русский\n\n"
         "Просто отправь текст для перевода 👇",
-        parse_mode="Markdown",
-        reply_markup=main_kb()
+        parse_mode="Markdown", reply_markup=main_kb()
     )
 
 @dp.message(F.text == "✍️ Редактор текста")
@@ -797,17 +1016,26 @@ async def handle_mode_editor(msg: Message):
         "Отправь любой текст — исправлю ошибки, улучшу стиль "
         "и объясню что именно изменилось.\n\n"
         "Подходит для писем, постов, резюме, статей 👇",
-        parse_mode="Markdown",
-        reply_markup=main_kb()
+        parse_mode="Markdown", reply_markup=main_kb()
     )
+
+# ── НОВЫЕ РЕЖИМЫ: входные точки ──────────────────────────────
+
+@dp.message(F.text == "😈 Злой спорщик")
+async def handle_hardcore_btn(msg: Message):
+    """Показываем входной хук с воронкой."""
+    await msg.answer(HARDCORE_HOOK, parse_mode="Markdown", reply_markup=hardcore_hook_kb())
+
+@dp.message(F.text == "👑 Императорский")
+async def handle_praise_btn(msg: Message):
+    """Показываем входной хук с воронкой."""
+    await msg.answer(PRAISE_HOOK, parse_mode="Markdown", reply_markup=praise_hook_kb())
+
+# ── Стандартные кнопки меню ─────────────────────────────────
 
 @dp.message(F.text == "💎 Premium")
 async def handle_premium_btn(msg: Message):
-    await msg.answer(
-        PREMIUM_TEXT.format(free_limit=FREE_LIMIT),
-        parse_mode="Markdown",
-        reply_markup=premium_kb()
-    )
+    await msg.answer(PREMIUM_TEXT, parse_mode="Markdown", reply_markup=premium_kb())
 
 @dp.message(F.text == "📋 История")
 async def handle_history_btn(msg: Message):
@@ -823,36 +1051,69 @@ async def handle_share_btn(msg: Message):
 
 @dp.message(F.text == "📁 Проекты")
 async def handle_projects_btn(msg: Message):
-    await msg.answer(
-        "🚀 *Наши проекты*\n\n"
-        "⚖️ *Мой Юрист*\n"
-        "Юридический помощник по российскому праву.\n"
-        "Вопросы, документы, жалобы, штрафы, ДТП.\n\n"
-        "🤖 *ChatGPT Free* (здесь)\n"
-        "AI-помощник для любых задач на базе GPT-4o.\n\n"
-        "_Больше проектов скоро..._",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚖️ Мой Юрист — перейти", url="https://t.me/moy_yurist_bot")],
-        ])
-    )
+    await cmd_projects(msg)
 
 @dp.message(F.text == "❓ Помощь")
 async def handle_help_btn(msg: Message):
     await cmd_help(msg)
 
-# ──────────────────────────────────────────────────────────────
-# Callbacks
-# ──────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# CALLBACKS
+# ══════════════════════════════════════════════════════════════
 
 @dp.callback_query(F.data == "show_premium")
 async def cb_show_premium(cb: CallbackQuery):
     await cb.answer()
-    await cb.message.answer(
-        PREMIUM_TEXT.format(free_limit=FREE_LIMIT),
-        parse_mode="Markdown",
-        reply_markup=premium_kb()
-    )
+    await cb.message.answer(PREMIUM_TEXT, parse_mode="Markdown", reply_markup=premium_kb())
+
+@dp.callback_query(F.data == "modes_screen")
+async def cb_modes_screen(cb: CallbackQuery):
+    await cb.answer()
+    await cb.message.answer(MODES_SCREEN_TEXT, parse_mode="Markdown", reply_markup=modes_screen_kb())
+
+# ── Вход в Danger Zone (hardcore) ───────────────────────────
+
+@dp.callback_query(F.data == "zone_hardcore")
+async def cb_enter_hardcore(cb: CallbackQuery):
+    await cb.answer()
+    user   = await get_user(cb.from_user.id)
+    hc_used = user.get("hardcore_free_used", 0)
+
+    if not user["is_premium"] and hc_used >= HARDCORE_FREE:
+        return await cb.message.answer(
+            HARDCORE_PAYWALL, parse_mode="Markdown", reply_markup=hardcore_paywall_kb()
+        )
+
+    await set_mode(cb.from_user.id, "hardcore")
+    await cb.message.answer(HARDCORE_ONBOARD, parse_mode="Markdown", reply_markup=main_kb())
+
+@dp.callback_query(F.data == "zone_hardcore_info")
+async def cb_hardcore_info(cb: CallbackQuery):
+    await cb.answer()
+    await cb.message.answer(DANGER_ZONE_TEXT, parse_mode="Markdown", reply_markup=danger_zone_kb())
+
+# ── Вход в Imperial (praise) ─────────────────────────────────
+
+@dp.callback_query(F.data == "zone_praise")
+async def cb_enter_praise(cb: CallbackQuery):
+    await cb.answer()
+    user    = await get_user(cb.from_user.id)
+    pr_used = user.get("praise_free_used", 0)
+
+    if not user["is_premium"] and pr_used >= PRAISE_FREE:
+        return await cb.message.answer(
+            PRAISE_PAYWALL, parse_mode="Markdown", reply_markup=praise_paywall_kb()
+        )
+
+    await set_mode(cb.from_user.id, "praise")
+    await cb.message.answer(PRAISE_ONBOARD, parse_mode="Markdown", reply_markup=main_kb())
+
+@dp.callback_query(F.data == "zone_praise_info")
+async def cb_praise_info(cb: CallbackQuery):
+    await cb.answer()
+    await cb.message.answer(PRAISE_HOOK, parse_mode="Markdown", reply_markup=praise_hook_kb())
+
+# ── Share через callback ─────────────────────────────────────
 
 @dp.callback_query(F.data == "share")
 async def cb_share(cb: CallbackQuery):
@@ -863,11 +1124,8 @@ async def cb_share(cb: CallbackQuery):
     user     = await get_user(uid)
     await cb.message.answer(
         SHARE_TEXT.format(
-            ref_link=ref_link,
-            bonus_inviter=20,
-            bonus_invited=10,
-            invited=user["invited_count"],
-            bonus_q=user["bonus_q"],
+            ref_link=ref_link, bonus_inviter=20, bonus_invited=10,
+            invited=user["invited_count"], bonus_q=user["bonus_q"],
         ),
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -878,24 +1136,17 @@ async def cb_share(cb: CallbackQuery):
         ])
     )
 
-@dp.callback_query(F.data == "features")
-async def cb_features(cb: CallbackQuery):
-    await cb.answer()
-    await cb.message.answer(
-        "✨ *Что умеет этот бот?*\n\n"
-        "💬 *ChatGPT* — отвечает на любые вопросы\n"
-        "🌍 *Переводчик* — авто-перевод рус↔любой язык\n"
-        "✍️ *Редактор* — исправит ошибки и улучшит стиль\n\n"
-        "Выбери режим в меню и отправь текст! 🤖",
-        parse_mode="Markdown"
-    )
-
 @dp.callback_query(F.data == "continue")
 async def cb_continue(cb: CallbackQuery):
     await cb.answer()
     await cb.message.answer("💬 Продолжаем! Задавай следующий вопрос 👇")
 
-# ── Три тарифа оплаты ────────────────────────────────────────
+@dp.callback_query(F.data == "features")
+async def cb_features(cb: CallbackQuery):
+    await cb.answer()
+    await cb.message.answer(MODES_SCREEN_TEXT, parse_mode="Markdown", reply_markup=modes_screen_kb())
+
+# ── Тарифы оплаты ────────────────────────────────────────────
 
 TARIFFS = {
     "buy:day":   ("🤖 ChatGPT Free — 1 день",  "premium_1_day",   PRICE_DAY,   1),
@@ -912,9 +1163,9 @@ async def cb_buy(cb: CallbackQuery):
         chat_id=cb.message.chat.id,
         title=title,
         description=(
-            f"✅ До 100 вопросов в сутки\n"
-            f"✅ GPT-4o — самая умная модель\n"
-            f"✅ Расширенный контекст диалога\n"
+            f"🗡️ Жёсткий спорщик — без лимитов\n"
+            f"👑 Императорский подхалим — без лимитов\n"
+            f"💬 ChatGPT — 100 вопросов в сутки\n"
             f"📅 {desc_days}"
         ),
         payload=payload,
@@ -922,9 +1173,7 @@ async def cb_buy(cb: CallbackQuery):
         prices=[LabeledPrice(label=f"Premium {desc_days}", amount=amount)],
     )
 
-# ──────────────────────────────────────────────────────────────
-# Оплата
-# ──────────────────────────────────────────────────────────────
+# ── Оплата ───────────────────────────────────────────────────
 
 @dp.pre_checkout_query()
 async def pre_checkout(query: PreCheckoutQuery):
@@ -942,7 +1191,10 @@ async def payment_done(msg: Message):
         f"🎉 *Premium активирован!*\n\n"
         f"⭐ Списано: {stars} Stars\n"
         f"💎 Доступ открыт на *{period}*\n\n"
-        f"Теперь тебе доступно до 100 вопросов в сутки.\n"
+        f"Теперь тебе доступны все режимы без лимитов:\n"
+        f"🗡️ Жёсткий спорщик\n"
+        f"👑 Императорский подхалим\n"
+        f"💬 ChatGPT — 100 вопросов/день\n\n"
         f"Задавай — я готов! 🤖",
         parse_mode="Markdown",
         reply_markup=main_kb()
@@ -958,15 +1210,9 @@ async def payment_done(msg: Message):
         except Exception:
             pass
 
-# ──────────────────────────────────────────────────────────────
-# Основной обработчик текста — главная воронка
-# ──────────────────────────────────────────────────────────────
-
-MENU_BUTTONS = {
-    "💬 ChatGPT", "🌍 Переводчик", "✍️ Редактор текста",
-    "💎 Premium", "📋 История", "👤 Профиль",
-    "🚀 Поделиться", "📁 Проекты", "❓ Помощь", "💬 Новый диалог"
-}
+# ══════════════════════════════════════════════════════════════
+# ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ
+# ══════════════════════════════════════════════════════════════
 
 @dp.message(F.text & ~F.text.startswith("/"))
 async def handle_message(msg: Message, state: FSMContext):
@@ -976,30 +1222,96 @@ async def handle_message(msg: Message, state: FSMContext):
     user = await get_user(msg.from_user.id, msg.from_user.username or "")
     text = msg.text.strip()
 
-    # ── Лимит длины сообщения как в Telegram (4096 символов) ──
     if len(text) > MAX_MSG_LEN:
         return await msg.answer(
-            f"⚠️ *Слишком длинный текст*\n\n"
-            f"Максимум — {MAX_MSG_LEN} символов (как в Telegram).\n"
-            f"Твой текст: {len(text)} символов.\n\n"
+            f"⚠️ *Слишком длинный текст*\n\nМаксимум — {MAX_MSG_LEN} символов.\n"
             f"Разбей на части и отправляй по очереди 👇",
             parse_mode="Markdown"
         )
-
     if len(text) < 2:
         return await msg.answer("💬 Напиши вопрос или текст — я отвечу!", reply_markup=main_kb())
 
+    mode = await get_mode(msg.from_user.id)
+
+    # ── HARDCORE: своя логика лимита ────────────────────────
+    if mode == "hardcore":
+        hc_used = user.get("hardcore_free_used", 0)
+        if not user["is_premium"] and hc_used >= HARDCORE_FREE:
+            return await msg.answer(HARDCORE_PAYWALL, parse_mode="Markdown", reply_markup=hardcore_paywall_kb())
+
+        wait_sec = await check_cooldown(msg.from_user.id)
+        if wait_sec > 0:
+            return await msg.answer(f"⏳ Подожди {int(wait_sec)} сек. перед следующим запросом.")
+
+        context = await get_context(msg.from_user.id, "hardcore")
+        wait    = await msg.answer("🗡️ _Формирую удар..._", parse_mode="Markdown")
+        answer  = await ask_ai(text, context, mode="hardcore")
+
+        context.extend([{"role": "user", "content": text}, {"role": "assistant", "content": answer}])
+        await save_context(msg.from_user.id, "hardcore", context)
+        await save_history(msg.from_user.id, "hardcore", text)
+        await touch_active(msg.from_user.id)
+        await bot.delete_message(msg.chat.id, wait.message_id)
+
+        if not user["is_premium"]:
+            await _db("UPDATE users SET hardcore_free_used=hardcore_free_used+1 WHERE user_id=?", (msg.from_user.id,))
+            new_hc_used = hc_used + 1
+            if new_hc_used >= HARDCORE_FREE:
+                # После последнего бесплатного — сразу апсейл
+                await msg.answer(answer, parse_mode="Markdown")
+                return await msg.answer(
+                    "🗡️ *Бесплатная дуэль завершена.*\n\n_Настоящая дуэль длится дольше одного удара._",
+                    parse_mode="Markdown",
+                    reply_markup=after_hardcore_free_kb()
+                )
+        # Premium или всё ок
+        footer = f"\n\n_🗡️ Режим: Жёсткий спорщик · {'∞' if user['is_premium'] else f'{HARDCORE_FREE - hc_used - 1} дуэлей бесплатно'}_"
+        kb = after_answer_premium_kb() if user["is_premium"] else None
+        return await msg.answer(answer + footer, parse_mode="Markdown", reply_markup=kb)
+
+    # ── PRAISE: своя логика лимита ──────────────────────────
+    if mode == "praise":
+        pr_used = user.get("praise_free_used", 0)
+        if not user["is_premium"] and pr_used >= PRAISE_FREE:
+            return await msg.answer(PRAISE_PAYWALL, parse_mode="Markdown", reply_markup=praise_paywall_kb())
+
+        wait_sec = await check_cooldown(msg.from_user.id)
+        if wait_sec > 0:
+            return await msg.answer(f"⏳ Подожди {int(wait_sec)} сек. перед следующим запросом.")
+
+        context = await get_context(msg.from_user.id, "praise")
+        wait    = await msg.answer("👑 _Готовлю церемонию..._", parse_mode="Markdown")
+        answer  = await ask_ai(text, context, mode="praise")
+
+        context.extend([{"role": "user", "content": text}, {"role": "assistant", "content": answer}])
+        await save_context(msg.from_user.id, "praise", context)
+        await save_history(msg.from_user.id, "praise", text)
+        await touch_active(msg.from_user.id)
+        await bot.delete_message(msg.chat.id, wait.message_id)
+
+        if not user["is_premium"]:
+            await _db("UPDATE users SET praise_free_used=praise_free_used+1 WHERE user_id=?", (msg.from_user.id,))
+            new_pr_used = pr_used + 1
+            if new_pr_used >= PRAISE_FREE:
+                await msg.answer(answer, parse_mode="Markdown")
+                return await msg.answer(
+                    "👑 *Бесплатная аудиенция завершена.*\n\n_Твоё величие заслуживает большего._",
+                    parse_mode="Markdown",
+                    reply_markup=after_praise_free_kb()
+                )
+        footer = f"\n\n_👑 Режим: Императорский · {'∞' if user['is_premium'] else f'{PRAISE_FREE - pr_used - 1} аудиенций бесплатно'}_"
+        kb = after_answer_premium_kb() if user["is_premium"] else None
+        return await msg.answer(answer + footer, parse_mode="Markdown", reply_markup=kb)
+
+    # ── СТАНДАРТНЫЕ РЕЖИМЫ: chat / translate / editor ───────
     ok, reason = can_ask(user)
     if not ok:
         return await msg.answer(limit_text(), parse_mode="Markdown", reply_markup=limit_kb())
 
-    # Антискликивание
     wait_sec = await check_cooldown(msg.from_user.id)
     if wait_sec > 0:
         return await msg.answer(f"⏳ Подожди {int(wait_sec)} сек. перед следующим запросом.")
 
-    # Определяем режим и подбираем waiting-сообщение
-    mode = await get_mode(msg.from_user.id)
     mode_info = MODES.get(mode, MODES["chat"])
     wait_texts = {
         "chat":      "🤖 _Думаю..._",
@@ -1007,33 +1319,28 @@ async def handle_message(msg: Message, state: FSMContext):
         "editor":    "✍️ _Редактирую..._",
     }
 
-    context = await get_context(msg.from_user.id) if mode == "chat" else []
+    context = await get_context(msg.from_user.id, mode) if mode == "chat" else []
+    wait    = await msg.answer(wait_texts.get(mode, "🤖 _Обрабатываю..._"), parse_mode="Markdown")
+    answer  = await ask_ai(text, context, mode=mode)
 
-    wait   = await msg.answer(wait_texts.get(mode, "🤖 _Обрабатываю..._"), parse_mode="Markdown")
-    answer = await ask_ai(text, context, mode=mode)
     await save_question_used(msg.from_user.id, reason == "bonus")
     await touch_active(msg.from_user.id)
     await save_history(msg.from_user.id, mode, text)
 
-    # Контекст только для chat
     if mode == "chat":
-        context.extend([
-            {"role": "user",      "content": text},
-            {"role": "assistant", "content": answer},
-        ])
-        await save_context(msg.from_user.id, context)
+        context.extend([{"role": "user", "content": text}, {"role": "assistant", "content": answer}])
+        await save_context(msg.from_user.id, "chat", context)
 
     await bot.delete_message(msg.chat.id, wait.message_id)
 
     user  = await get_user(msg.from_user.id)
     left  = questions_left(user)
 
-    mode_label = mode_info["emoji"]
     if user["is_premium"]:
-        footer = f"\n\n_{mode_label} Режим: {mode_info['name']} · Вопросов: {user['questions_today']}/100_"
+        footer = f"\n\n_{mode_info['emoji']} Режим: {mode_info['name']} · Вопросов: {user['questions_today']}/100_"
         kb     = after_answer_premium_kb()
     else:
-        footer = f"\n\n_{mode_label} Режим: {mode_info['name']} · Осталось: {left} из {FREE_LIMIT}_"
+        footer = f"\n\n_{mode_info['emoji']} Режим: {mode_info['name']} · Осталось: {left} из {FREE_LIMIT}_"
         kb     = after_answer_kb() if int(left) <= 1 else None
 
     await msg.answer(answer + footer, parse_mode="Markdown", reply_markup=kb)
@@ -1043,7 +1350,6 @@ async def handle_message(msg: Message, state: FSMContext):
 # ══════════════════════════════════════════════════════════════
 
 async def send_reminders():
-    """Напоминания через 24 часа после последней активности."""
     while True:
         await asyncio.sleep(3600)
         try:
@@ -1067,8 +1373,9 @@ async def send_reminders():
                     await bot.send_message(
                         uid, text, parse_mode="Markdown",
                         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                            [InlineKeyboardButton(text="💬 Задать вопрос", callback_data="continue")],
-                            [InlineKeyboardButton(text="💎 Premium", callback_data="show_premium")],
+                            [InlineKeyboardButton(text="😈 Злой спорщик",  callback_data="zone_hardcore")],
+                            [InlineKeyboardButton(text="👑 Императорский", callback_data="zone_praise")],
+                            [InlineKeyboardButton(text="💬 ChatGPT",       callback_data="continue")],
                         ])
                     )
                 except Exception:
@@ -1083,25 +1390,26 @@ async def send_reminders():
 # ══════════════════════════════════════════════════════════════
 
 async def set_commands():
-    """Регистрируем команды — они появятся в меню кнопки Меню."""
     commands = [
-        BotCommand(command="start",   description="🤖 Главное меню"),
-        BotCommand(command="premium", description="💎 Получить Premium"),
-        BotCommand(command="profile", description="👤 Твой аккаунт"),
-        BotCommand(command="share",   description="🚀 Поделиться с другом"),
-        BotCommand(command="projects",description="📁 Наши проекты"),
-        BotCommand(command="history", description="📋 История запросов"),
-        BotCommand(command="clear",   description="🗑 Очистить историю диалога"),
-        BotCommand(command="help",    description="❓ Справка"),
+        BotCommand(command="start",    description="🤖 Главное меню"),
+        BotCommand(command="premium",  description="💎 Получить Premium"),
+        BotCommand(command="profile",  description="👤 Твой аккаунт"),
+        BotCommand(command="share",    description="🚀 Поделиться с другом"),
+        BotCommand(command="projects", description="📁 Наши проекты"),
+        BotCommand(command="history",  description="📋 История запросов"),
+        BotCommand(command="clear",    description="🗑 Очистить историю диалога"),
+        BotCommand(command="help",     description="❓ Справка"),
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+
 
 async def main():
     await init_db()
     await set_commands()
-    logger.info("🤖 ChatGPT Free запущен!")
+    logger.info("🤖 ChatGPT Free v2.0 запущен!")
     asyncio.create_task(send_reminders())
     await dp.start_polling(bot, skip_updates=True)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
