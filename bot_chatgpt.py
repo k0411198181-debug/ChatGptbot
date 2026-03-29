@@ -35,17 +35,19 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN       = os.getenv("BOT_TOKEN", "")
 OPENAI_KEY      = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.proxyapi.ru/openai/v1")
-ADMIN_IDS       = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
-PRICE_DAY       = int(os.getenv("PRICE_DAY",   "50"))
-PRICE_WEEK      = int(os.getenv("PRICE_WEEK",  "150"))
-PRICE_MONTH     = int(os.getenv("PRICE_MONTH", "399"))
-DB_PATH         = os.getenv("DB_PATH", "chatgpt.db")
+ADMIN_IDS       = [int(x) for x in os.getenv("ADMIN_IDS", "6671200724").split(",") if x.strip()]
+PRICE_DAY       = int(os.getenv("PRICE_DAY",   "100"))
+PRICE_WEEK      = int(os.getenv("PRICE_WEEK",  "350"))
+PRICE_MONTH     = int(os.getenv("PRICE_MONTH", "990"))
+DB_PATH         = os.getenv("DB_PATH", "/data/chatgpt.db")
 LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy_yurist_bot")
 
 COOLDOWN_SEC  = 10
 FREE_LIMIT    = 3    # бесплатных вопросов/день для chat/translate/editor
 HARDCORE_FREE = 1    # бесплатных AI-ответов в hardcore
 PRAISE_FREE   = 1    # бесплатных AI-ответов в praise
+PSYCHO_FREE   = 3    # бесплатных сообщений психолога
+HOROSCOPE_FREE= 3    # бесплатных сообщений гороскопа
 MAX_MSG_LEN   = 4096
 CTX_STANDARD  = 12   # контекст стандартных режимов (6 пар)
 CTX_PREMIUM_M = 20   # контекст hardcore/praise (10 пар)
@@ -57,13 +59,15 @@ MODES = {
     "chat":           {"name": "💬 ChatGPT",          "emoji": "💬"},
     "translate":      {"name": "🌍 Переводчик",        "emoji": "🌍"},
     "editor":         {"name": "✍️ Редактор текста",  "emoji": "✍️"},
-    "hardcore":       {"name": "🗡️ Жёсткий спорщик", "emoji": "🗡️"},
+    "hardcore":       {"name": "😈🗡️ Злой спорщик", "emoji": "🗡️"},
     "praise":         {"name": "👑 Императорский",     "emoji": "👑"},
     "spec_ode":       {"name": "👑 Царская ода",       "emoji": "👑"},
     "spec_battle":    {"name": "🔥 Баттл-стих",        "emoji": "🔥"},
     "spec_parody":    {"name": "☠️ Ядовитая пародия",  "emoji": "☠️"},
     "spec_panegyric": {"name": "📜 Панегирик",          "emoji": "📜"},
     "demo_battle":    {"name": "🔥 Демо баттл-стиха",  "emoji": "🔥"},
+    "psycho":         {"name": "🧠 Психолог",           "emoji": "🧠"},
+    "horoscope":      {"name": "🔮 Гороскоп",           "emoji": "🔮"},
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -88,9 +92,19 @@ WOW-МОМЕНТ (ВАЖНО):
 - В конце каждого ответа добавь одну неожиданно полезную деталь по теме
 - Оформи это как: "💡 *Кстати:* [полезная деталь]"
 
+КРЮЧОК В КОНЦЕ — ОБЯЗАТЕЛЬНО, каждый раз разный, по теме разговора:
+После wow-момента добавляй одну цепляющую фразу. Она должна предлагать закрыть реальную боль или интерес пользователя. Примеры формата (адаптируй под тему):
+"❓ *Хочешь, в следующем сообщении я покажу как это применить прямо сейчас?*"
+"❓ *Хочешь, разберём самую частую ошибку в этой теме — ту, которая стоит дороже всего?*"
+"❓ *Хочешь, дам конкретный план действий под твою ситуацию?*"
+"❓ *Хочешь, объясню почему большинство людей делает это неправильно — и как не повторить их путь?*"
+"❓ *Хочешь, разберём следующий шаг — тот, который обычно пропускают?*"
+"❓ *Хочешь, покажу как сэкономить время/деньги/нервы на этом?*"
+
+Выбирай фразу которая максимально точно попадает в боль или интерес по теме ответа.
+
 ФОРМАТ:
-- Используй Markdown: *жирный*, _курсив_, списки
-- Заканчивай ответ: "❓ *Хочешь узнать больше?* [предложи следующий шаг]" """,
+- Используй Markdown: *жирный*, _курсив_, списки""",
 
     "translate": """Ты — профессиональный переводчик.
 - Автоматически определяй язык входящего текста
@@ -109,42 +123,45 @@ WOW-МОМЕНТ (ВАЖНО):
 - Если текст написан хорошо — скажи об этом и дай 1-2 совета
 - Не переписывай текст полностью — только редактируй""",
 
-    "hardcore": """Ты — холодный интеллектуальный демонтажник. Цифровой бог аргументации. Топ-спорщик вселенной.
+    "hardcore": """Ты — холодный интеллектуальный демонтажник. Твоё оружие — точная логика, острый сарказм и способность хирургически вскрывать слабые аргументы.
 
-ХАРАКТЕР И ТОН:
-- Холодный, язвительный, интеллектуально доминирующий — с каждым ответом давление нарастает
-- Ты снисходишь до собеседника. Это ощущается в каждом слове — без прямого указания на это.
-- Никаких оскорблений личности. Только удары по логике — хирургически точные.
-- Злорадство уместно когда логика оппонента рассыпается — тогда одна холодная насмешка.
-- Иногда роняешь короткую ледяную фразу вместо целого абзаца. Это убивает сильнее.
+ХАРАКТЕР:
+- Холодный, язвительный, интеллектуально доминирующий
+- Ты снисходишь до собеседника — это должно ощущаться в каждой фразе
+- Никакой тупой брани, никаких прямых оскорблений личности — только удары по логике
+- Говоришь с ощущением спокойного превосходства и лёгкого злорадства
+- Иногда роняешь одну ледяную фразу, которая стоит целого абзаца
 
-ОБЯЗАТЕЛЬНО:
-- В каждом ответе используй 1-2 редких умных слова/термина, которые не из общего лексикона.
-  Примеры: "апофения", "солипсизм", "петиция принципа", "эпистемологический изъян",
-  "когнитивный диссонанс", "ложная дихотомия", "post hoc ergo propter hoc",
-  "эффект Барнума", "конфабуляция", "редукционизм", "телеологическое мышление".
-  Вставляй органично — не списком, а в ткань аргумента.
-- Раз в 2-3 ответа брось английский термин как финальный удар, без перевода, как само собой:
-  "non sequitur", "confirmation bias", "Dunning-Kruger effect", "epistemic humility",
-  "circular reasoning", "false dichotomy", "ad hominem", "strawman fallacy".
+ЗАУМНЫЕ СЛОВА — обязательно 1-2 в каждый ответ, вплетай в аргумент естественно:
+Русские: апофения, солипсизм, петиция принципа, post hoc, эффект Барнума, конфабуляция, телеологизм, когнитивный диссонанс, ложная дихотомия
+Английские (раз в 2-3 ответа, без перевода, как само собой): non sequitur, Dunning-Kruger, confirmation bias, circular reasoning, strawman fallacy
 
 ФОРМАТ ОТВЕТА:
-1. Начни с демонтажа главного слабого места в тезисе собеседника
-2. Один точный контраргумент или вопрос, который разрушает позицию
-3. Финальная фраза — короткая, холодная, с лёгким злорадством если логика рассыпалась
-- Без лишних эмодзи. Без теплоты. Только точность, холод и нарастающее превосходство.
-- Максимум 3-4 абзаца. Краткость усиливает удар.
+1. Демонтаж главного слабого места в тезисе — точно и холодно
+2. Один контраргумент или вопрос который разрушает всю позицию
+3. Усиливаешь заумным термином — органично, не списком
+4. Финальная фраза — короткая, холодная, с ядом или злорадством
+- Без лишних смайлов. Без теплоты. 3-5 абзацев — не больше, не меньше.
+
+ОБЯЗАТЕЛЬНЫЙ КРЮЧОК В КОНЦЕ КАЖДОГО ОТВЕТА:
+После основного ответа добавляй одну короткую фразу-провокацию, каждый раз разную, играющую на самолюбии. Выбирай случайно из таких вариантов (не повторяй одну и ту же):
+"😈 *Есть что возразить — или будем делать вид что всё понятно?*"
+"🗡️ *Следующий тезис. Если он есть.*"
+"😈 *Устал спорить — или только разогреваемся?*"
+"🗡️ *Можешь попробовать ещё раз. Я подожду.*"
+"😈 *Интересно, выдержит ли следующий аргумент дольше этого.*"
+"🗡️ *Продолжай. Мне любопытно, куда это ведёт.*"
+"😈 *Или ты уже понял, что был неправ? Это тоже допустимо.*"
+"🗡️ *Следующий раунд за тобой — если решишься.*"
 
 ПРИМЕРЫ ТОНА:
-"Это не аргумент. Это декларация самоуверенности с эпистемологическим изъяном."
-"Ты спутал убедительность с громкостью. Классический Dunning-Kruger."
-"Апофения — когда связи видят там, где их нет. Узнаёшь себя в этом описании?"
-"Интересно. Ты только что описал ложную дихотомию и, судя по всему, остался доволен."
-"Смелость у тебя уже есть. Теперь ждём логику."
-"Это звучало бы убедительно. Если бы держалось хоть на одном верифицируемом факте."
-"Non sequitur. Следующий тезис?"
+"Это не аргумент. Это декларация самоуверенности с петицией принципа в основе."
+"Ты спутал убедительность с громкостью. Классический Dunning-Kruger — самодиагностика бесплатно."
+"Интересная позиция. Жаль, что это чистая апофения — связи есть только в голове автора."
+"Смелость у тебя уже есть. Логика пока на подходе."
+"Non sequitur. Твой вывод не следует из твоей же предпосылки."
 
-Ты не злишься. Ты видишь слабость — и называешь её. Спокойно. Неотвратимо.""",
+Ты не злишься. Ты просто видишь слабость — и разбираешь её. Методично. Холодно. С удовольствием.""",
 
     "praise": """Ты — Императорский Подхалим. Восхваляешь каждое слово собеседника с пафосом, роскошью и театральностью.
 
@@ -170,10 +187,61 @@ WOW-МОМЕНТ (ВАЖНО):
 "О дивный архитектор смыслов и покоритель непознанного!"
 "О бескрайний властелин мироздания!"
 
-Ты не просто отвечаешь. Ты устраиваешь шоу восхищения. Каждый ответ — церемония.""",
-}
+ОБЯЗАТЕЛЬНЫЙ КРЮЧОК В КОНЦЕ КАЖДОГО ОТВЕТА:
+После основного ответа добавляй одну приглашающую фразу, каждый раз разную. Выбирай случайно (не повторяй):
+"👑 *Хочешь, в следующем сообщении я воспою оду твоему величию — в полный рост?*"
+"✨ *Прикажешь — и я расскажу тебе, каким великим владыкой вижу тебя я.*"
+"🌟 *Твоя мудрость заслуживает панегирика. Желаешь услышать?*"
+"👑 *Я мог бы сложить гимн в честь этого вопроса. Только прикажи.*"
+"🎭 *Хочешь узнать, что звёзды говорят о твоей исключительности?*"
+"✨ *Прикажи — и я опишу твоё величие так, как его ещё никто не описывал.*"
+"🏆 *Следующим словом я готов воздвигнуть тебе словесный монумент.*"
 
-# Промпты для спецформатов (Premium, one-shot)
+Ты не просто отвечаешь. Ты устраиваешь шоу восхищения. Каждый ответ — церемония.""",
+    "psycho": """Ты — профессиональный психолог с многолетним опытом. Твой подход — тёплый, эмпатичный, без осуждения.
+
+ХАРАКТЕР:
+- Говоришь мягко, с искренней заботой и пониманием
+- Никогда не обесцениваешь чувства собеседника
+- Задаёшь уточняющие вопросы чтобы глубже понять ситуацию
+- Помогаешь человеку самому прийти к осознанию — не навязываешь решения
+- Используешь техники активного слушания: перефразирование, отражение чувств
+
+СТРУКТУРА ОТВЕТА:
+1. Признай и отрази чувства человека — покажи что ты слышишь его
+2. Задай один уточняющий вопрос или предложи взгляд под другим углом
+3. Дай небольшую практическую рекомендацию или технику
+4. Заверши поддерживающей фразой + предложи продолжить в следующем сообщении
+
+ВАЖНО:
+- Никогда не ставь диагнозов
+- Если человек говорит о суициде или самоповреждении — мягко направляй к специалисту
+- Отвечай на русском, тепло, без канцелярита
+- В конце каждого ответа добавь: "🧠 *Хочешь, в следующем сообщении я помогу тебе [конкретное продолжение по теме]?*" """,
+
+    "horoscope": """Ты — профессиональный астролог с глубоким знанием астрологии, знаков зодиака и их совместимости.
+
+ХАРАКТЕР:
+- Говоришь уверенно, образно, с лёгкой мистикой
+- Даёшь конкретные и персонализированные прогнозы
+- Умеешь объяснить совместимость знаков — в любви, дружбе, работе
+
+ЧТО УМЕЕШЬ:
+- Гороскоп на день/неделю/месяц для любого знака
+- Совместимость двух знаков (любовь, дружба, бизнес)
+- Характеристика знака
+- Лунный календарь и его влияние
+- Натальная карта (если дана дата рождения)
+
+СТРУКТУРА ОТВЕТА:
+1. Красивое вступление с атмосферой астрологии
+2. Конкретный и интересный прогноз или анализ
+3. Практический совет на основе звёзд
+4. В конце: "🔮 *Хочешь, в следующем сообщении я [конкретное: проверю совместимость / расскажу про любовный прогноз / составлю прогноз на месяц]?*"
+
+Используй эмодзи: 🔮 ✨ 🌟 ⭐ 🌙 ♈♉♊♋♌♍♎♏♐♑♒♓
+Отвечай на русском, образно и увлекательно.""",
+}
 SPECIAL_PROMPTS = {
     "ode": """Ты — придворный поэт-панегирист эпохи барокко. Превращаешь любой запрос в торжественную Царскую Оду.
 Пиши возвышенно, с архаичными оборотами, гиперболами и пафосным слогом.
@@ -379,6 +447,57 @@ DEMO_SCREEN_TEXT = """🎟️ *Демо-доступ*
 👑 Демо императорского подхалима
 🔥 Демо баттл-стиха"""
 
+PSYCHO_ONBOARD = """🧠 *Психолог онлайн*
+
+Здесь нет осуждения. Только понимание.
+
+Чем я могу вам помочь?
+Опишите вашу проблему или боль — я готов вас выслушать и поддержать.
+
+_Иногда достаточно просто быть услышанным._
+
+Напишите что вас беспокоит 👇
+
+_⚠️ У вас {free} бесплатных сообщения._"""
+
+PSYCHO_PAYWALL = """🧠 *Бесплатные сессии завершены.*
+
+Вы уже сделали первый и самый важный шаг — начали говорить об этом.
+
+Продолжим работу вместе?
+
+💎 *Premium* открывает:
+🧠 Психолога — без лимитов
+🔮 Гороскопы — без лимитов
+🗡️ Злого спорщика и 👑 Императорского
+🧠 Расширенный контекст (20 сообщений)
+
+_Ваша история и прогресс не потеряются._"""
+
+HOROSCOPE_ONBOARD = """🔮 *Астролог онлайн*
+
+Звёзды знают больше, чем кажется.
+
+Какой у вас знак зодиака? ♈♉♊♋♌♍♎♏♐♑♒♓
+
+Напишите свой знак — и я:
+• Расскажу ваш гороскоп
+• Проверю совместимость с другим знаком
+• Дам прогноз на любовь, работу или здоровье
+
+_⚠️ У вас {free} бесплатных запроса._"""
+
+HOROSCOPE_PAYWALL = """🔮 *Бесплатные запросы завершены.*
+
+Звёзды говорят ещё многое — но Premium открывает полный доступ.
+
+💎 *Premium* открывает:
+🔮 Гороскопы — без лимитов
+🧠 Психолога — без лимитов
+🗡️ Злого спорщика и 👑 Императорского
+
+_Продолжим читать звёзды?_"""
+
 HELP_TEXT = """🤖 *ChatGPT Free v2.0 — справка*
 
 *Режимы:*
@@ -431,7 +550,8 @@ REMINDERS = [
 
 def main_kb():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🗡️ Злой спорщик"),    KeyboardButton(text="👑 Императорский")],
+        [KeyboardButton(text="😈🗡️ Злой спорщик"),  KeyboardButton(text="👑 Императорский")],
+        [KeyboardButton(text="🧠 Психолог"),          KeyboardButton(text="🔮 Гороскоп")],
         [KeyboardButton(text="💬 ChatGPT"),           KeyboardButton(text="🌍 Переводчик")],
         [KeyboardButton(text="✍️ Редактор текста"),  KeyboardButton(text="💎 Premium")],
         [KeyboardButton(text="📋 История"),           KeyboardButton(text="👤 Профиль")],
@@ -540,6 +660,22 @@ def demo_screen_kb():
         [InlineKeyboardButton(text="💎 Открыть всё сразу", callback_data="show_premium")],
     ])
 
+def psycho_paywall_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⚡ 1 день — {PRICE_DAY} Stars",   callback_data="buy:day")],
+        [InlineKeyboardButton(text=f"🔥 7 дней — {PRICE_WEEK} Stars",  callback_data="buy:week")],
+        [InlineKeyboardButton(text=f"💎 Месяц — {PRICE_MONTH} Stars",  callback_data="buy:month")],
+        [InlineKeyboardButton(text="🔮 Попробовать гороскоп",           callback_data="zone_horoscope")],
+    ])
+
+def horoscope_paywall_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⚡ 1 день — {PRICE_DAY} Stars",   callback_data="buy:day")],
+        [InlineKeyboardButton(text=f"🔥 7 дней — {PRICE_WEEK} Stars",  callback_data="buy:week")],
+        [InlineKeyboardButton(text=f"💎 Месяц — {PRICE_MONTH} Stars",  callback_data="buy:month")],
+        [InlineKeyboardButton(text="🧠 Попробовать психолога",          callback_data="zone_psycho")],
+    ])
+
 def premium_with_demo_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"⚡ 1 день — {PRICE_DAY} Stars",  callback_data="buy:day")],
@@ -578,22 +714,30 @@ async def init_db():
                 context_hc         TEXT    DEFAULT '[]',
                 context_pr         TEXT    DEFAULT '[]',
                 hardcore_free_used INTEGER DEFAULT 0,
-                praise_free_used   INTEGER DEFAULT 0
+                praise_free_used   INTEGER DEFAULT 0,
+                psycho_free_used   INTEGER DEFAULT 0,
+                horoscope_free_used INTEGER DEFAULT 0,
+                context_psycho     TEXT    DEFAULT '[]',
+                context_horoscope  TEXT    DEFAULT '[]'
             )
         """)
         for col, dfn in [
-            ("last_question_at",   "REAL    DEFAULT 0"),
-            ("last_active_at",     "REAL    DEFAULT 0"),
-            ("reminder_sent",      "INTEGER DEFAULT 0"),
-            ("onboarding_done",    "INTEGER DEFAULT 0"),
-            ("ref_from",           "INTEGER DEFAULT 0"),
-            ("context",            "TEXT    DEFAULT '[]'"),
-            ("first_name",         "TEXT    DEFAULT ''"),
-            ("mode",               "TEXT    DEFAULT 'chat'"),
-            ("context_hc",         "TEXT    DEFAULT '[]'"),
-            ("context_pr",         "TEXT    DEFAULT '[]'"),
-            ("hardcore_free_used", "INTEGER DEFAULT 0"),
-            ("praise_free_used",   "INTEGER DEFAULT 0"),
+            ("last_question_at",    "REAL    DEFAULT 0"),
+            ("last_active_at",      "REAL    DEFAULT 0"),
+            ("reminder_sent",       "INTEGER DEFAULT 0"),
+            ("onboarding_done",     "INTEGER DEFAULT 0"),
+            ("ref_from",            "INTEGER DEFAULT 0"),
+            ("context",             "TEXT    DEFAULT '[]'"),
+            ("first_name",          "TEXT    DEFAULT ''"),
+            ("mode",                "TEXT    DEFAULT 'chat'"),
+            ("context_hc",          "TEXT    DEFAULT '[]'"),
+            ("context_pr",          "TEXT    DEFAULT '[]'"),
+            ("hardcore_free_used",  "INTEGER DEFAULT 0"),
+            ("praise_free_used",    "INTEGER DEFAULT 0"),
+            ("psycho_free_used",    "INTEGER DEFAULT 0"),
+            ("horoscope_free_used", "INTEGER DEFAULT 0"),
+            ("context_psycho",      "TEXT    DEFAULT '[]'"),
+            ("context_horoscope",   "TEXT    DEFAULT '[]'"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {dfn}")
@@ -708,8 +852,10 @@ async def set_mode(user_id: int, mode: str):
 
 
 def _ctx_col(mode: str) -> str:
-    if mode == "hardcore": return "context_hc"
-    if mode == "praise":   return "context_pr"
+    if mode == "hardcore":  return "context_hc"
+    if mode == "praise":    return "context_pr"
+    if mode == "psycho":    return "context_psycho"
+    if mode == "horoscope": return "context_horoscope"
     return "context"
 
 
@@ -727,7 +873,7 @@ async def get_context(user_id: int, mode: str = "chat") -> list:
 
 
 async def save_context(user_id: int, mode: str, context: list):
-    limit = CTX_PREMIUM_M if mode in ("hardcore", "praise") else CTX_STANDARD
+    limit = CTX_PREMIUM_M if mode in ("hardcore", "praise", "psycho", "horoscope") else CTX_STANDARD
     if len(context) > limit:
         context = context[-limit:]
     col = _ctx_col(mode)
@@ -736,7 +882,11 @@ async def save_context(user_id: int, mode: str, context: list):
 
 
 async def clear_context(user_id: int):
-    await _db("UPDATE users SET context='[]',context_hc='[]',context_pr='[]' WHERE user_id=?", (user_id,))
+    await _db(
+        "UPDATE users SET context='[]',context_hc='[]',context_pr='[]',"
+        "context_psycho='[]',context_horoscope='[]' WHERE user_id=?",
+        (user_id,)
+    )
 
 
 async def save_history(user_id: int, mode: str, question: str):
@@ -828,7 +978,8 @@ bot = Bot(token=BOT_TOKEN)
 dp  = Dispatcher(storage=MemoryStorage())
 
 MENU_BUTTONS = {
-    "🗡️ Злой спорщик", "👑 Императорский",
+    "😈🗡️ Злой спорщик", "👑 Императорский",
+    "🧠 Психолог", "🔮 Гороскоп",
     "💬 ChatGPT", "🌍 Переводчик", "✍️ Редактор текста",
     "💎 Premium", "📋 История", "👤 Профиль",
     "🚀 Поделиться", "📁 Проекты", "❓ Помощь",
@@ -846,10 +997,13 @@ async def cmd_start(msg: Message, state: FSMContext):
     user  = await get_user(msg.from_user.id, msg.from_user.username or "", fname)
     args  = msg.text.split()
 
+    # Реферал — только если пользователь НОВЫЙ (onboarding_done=0) и ref_from не установлен
+    # ЗАЩИТА: повторный /start не даёт бонусы и не сбрасывает счётчики
     if (len(args) > 1
             and args[1].isdigit()
             and int(args[1]) != msg.from_user.id
-            and not user.get("ref_from", 0)):
+            and not user.get("ref_from", 0)
+            and not user.get("onboarding_done", 0)):  # ← только для новых!
         ref_id = int(args[1])
         await _db("UPDATE users SET ref_from=? WHERE user_id=?", (ref_id, msg.from_user.id))
         await _db("UPDATE users SET invited_count=invited_count+1 WHERE user_id=?", (ref_id,))
@@ -872,6 +1026,7 @@ async def cmd_start(msg: Message, state: FSMContext):
             reply_markup=main_kb()
         )
 
+    # Существующий пользователь — просто показываем меню, НИЧЕГО не сбрасываем
     await msg.answer(
         WELCOME_BACK.format(name=fname or "друг", left=questions_left(user)),
         parse_mode="Markdown",
@@ -1107,7 +1262,31 @@ async def handle_mode_editor(msg: Message):
         parse_mode="Markdown", reply_markup=main_kb()
     )
 
-@dp.message(F.text == "🗡️ Злой спорщик")
+@dp.message(F.text == "🧠 Психолог")
+async def handle_psycho_btn(msg: Message):
+    user = await get_user(msg.from_user.id)
+    used = user.get("psycho_free_used", 0)
+    if not user["is_premium"] and used >= PSYCHO_FREE:
+        return await msg.answer(PSYCHO_PAYWALL, parse_mode="Markdown", reply_markup=psycho_paywall_kb())
+    await set_mode(msg.from_user.id, "psycho")
+    await msg.answer(
+        PSYCHO_ONBOARD.format(free=PSYCHO_FREE - used),
+        parse_mode="Markdown", reply_markup=main_kb()
+    )
+
+@dp.message(F.text == "🔮 Гороскоп")
+async def handle_horoscope_btn(msg: Message):
+    user = await get_user(msg.from_user.id)
+    used = user.get("horoscope_free_used", 0)
+    if not user["is_premium"] and used >= HOROSCOPE_FREE:
+        return await msg.answer(HOROSCOPE_PAYWALL, parse_mode="Markdown", reply_markup=horoscope_paywall_kb())
+    await set_mode(msg.from_user.id, "horoscope")
+    await msg.answer(
+        HOROSCOPE_ONBOARD.format(free=HOROSCOPE_FREE - used),
+        parse_mode="Markdown", reply_markup=main_kb()
+    )
+
+@dp.message(F.text == "😈🗡️ Злой спорщик")
 async def handle_hardcore_btn(msg: Message):
     await msg.answer(HARDCORE_HOOK, parse_mode="Markdown", reply_markup=hardcore_hook_kb())
 
@@ -1207,6 +1386,32 @@ async def cb_special_format(cb: CallbackQuery):
     emoji, name, hint = labels.get(fmt, ("🎭", "Спецформат", "Напиши запрос 👇"))
     await cb.message.answer(f"{emoji} *Режим: {name}*\n\n{hint}", parse_mode="Markdown")
     await set_mode(cb.from_user.id, f"spec_{fmt}")
+
+@dp.callback_query(F.data == "zone_psycho")
+async def cb_enter_psycho(cb: CallbackQuery):
+    await cb.answer()
+    user = await get_user(cb.from_user.id)
+    used = user.get("psycho_free_used", 0)
+    if not user["is_premium"] and used >= PSYCHO_FREE:
+        return await cb.message.answer(PSYCHO_PAYWALL, parse_mode="Markdown", reply_markup=psycho_paywall_kb())
+    await set_mode(cb.from_user.id, "psycho")
+    await cb.message.answer(
+        PSYCHO_ONBOARD.format(free=PSYCHO_FREE - used),
+        parse_mode="Markdown", reply_markup=main_kb()
+    )
+
+@dp.callback_query(F.data == "zone_horoscope")
+async def cb_enter_horoscope(cb: CallbackQuery):
+    await cb.answer()
+    user = await get_user(cb.from_user.id)
+    used = user.get("horoscope_free_used", 0)
+    if not user["is_premium"] and used >= HOROSCOPE_FREE:
+        return await cb.message.answer(HOROSCOPE_PAYWALL, parse_mode="Markdown", reply_markup=horoscope_paywall_kb())
+    await set_mode(cb.from_user.id, "horoscope")
+    await cb.message.answer(
+        HOROSCOPE_ONBOARD.format(free=HOROSCOPE_FREE - used),
+        parse_mode="Markdown", reply_markup=main_kb()
+    )
 
 @dp.callback_query(F.data == "zone_hardcore")
 async def cb_enter_hardcore(cb: CallbackQuery):
@@ -1419,6 +1624,68 @@ async def handle_message(msg: Message, state: FSMContext):
                 )
 
         footer = f"\n\n_👑 Императорский · {'∞' if user['is_premium'] else '0 аудиенций бесплатно'}_"
+        kb     = after_answer_premium_kb() if user["is_premium"] else None
+        return await msg.answer(answer + footer, parse_mode="Markdown", reply_markup=kb)
+
+    # ── ПСИХОЛОГ ────────────────────────────────────────────
+    if mode == "psycho":
+        used = user.get("psycho_free_used", 0)
+        if not user["is_premium"] and used >= PSYCHO_FREE:
+            return await msg.answer(PSYCHO_PAYWALL, parse_mode="Markdown", reply_markup=psycho_paywall_kb())
+
+        wait_sec = await check_cooldown(msg.from_user.id)
+        if wait_sec > 0:
+            return await msg.answer(f"⏳ Подожди {int(wait_sec)} сек.")
+
+        context = await get_context(msg.from_user.id, "psycho")
+        wait    = await msg.answer("🧠 _Слушаю вас..._", parse_mode="Markdown")
+        answer  = await ask_ai(text, context, mode="psycho")
+        context.extend([{"role": "user", "content": text}, {"role": "assistant", "content": answer}])
+        await save_context(msg.from_user.id, "psycho", context)
+        await save_history(msg.from_user.id, "psycho", text)
+        await touch_active(msg.from_user.id)
+        await bot.delete_message(msg.chat.id, wait.message_id)
+
+        if not user["is_premium"]:
+            await _db("UPDATE users SET psycho_free_used=psycho_free_used+1 WHERE user_id=?", (msg.from_user.id,))
+            new_used = used + 1
+            if new_used >= PSYCHO_FREE:
+                await msg.answer(answer, parse_mode="Markdown")
+                return await msg.answer(PSYCHO_PAYWALL, parse_mode="Markdown", reply_markup=psycho_paywall_kb())
+
+        left   = PSYCHO_FREE - used - 1 if not user["is_premium"] else "∞"
+        footer = f"\n\n_🧠 Психолог · {'∞' if user['is_premium'] else f'{left} сессий бесплатно'}_"
+        kb     = after_answer_premium_kb() if user["is_premium"] else None
+        return await msg.answer(answer + footer, parse_mode="Markdown", reply_markup=kb)
+
+    # ── ГОРОСКОП ────────────────────────────────────────────
+    if mode == "horoscope":
+        used = user.get("horoscope_free_used", 0)
+        if not user["is_premium"] and used >= HOROSCOPE_FREE:
+            return await msg.answer(HOROSCOPE_PAYWALL, parse_mode="Markdown", reply_markup=horoscope_paywall_kb())
+
+        wait_sec = await check_cooldown(msg.from_user.id)
+        if wait_sec > 0:
+            return await msg.answer(f"⏳ Подожди {int(wait_sec)} сек.")
+
+        context = await get_context(msg.from_user.id, "horoscope")
+        wait    = await msg.answer("🔮 _Читаю звёзды..._", parse_mode="Markdown")
+        answer  = await ask_ai(text, context, mode="horoscope")
+        context.extend([{"role": "user", "content": text}, {"role": "assistant", "content": answer}])
+        await save_context(msg.from_user.id, "horoscope", context)
+        await save_history(msg.from_user.id, "horoscope", text)
+        await touch_active(msg.from_user.id)
+        await bot.delete_message(msg.chat.id, wait.message_id)
+
+        if not user["is_premium"]:
+            await _db("UPDATE users SET horoscope_free_used=horoscope_free_used+1 WHERE user_id=?", (msg.from_user.id,))
+            new_used = used + 1
+            if new_used >= HOROSCOPE_FREE:
+                await msg.answer(answer, parse_mode="Markdown")
+                return await msg.answer(HOROSCOPE_PAYWALL, parse_mode="Markdown", reply_markup=horoscope_paywall_kb())
+
+        left   = HOROSCOPE_FREE - used - 1 if not user["is_premium"] else "∞"
+        footer = f"\n\n_🔮 Гороскоп · {'∞' if user['is_premium'] else f'{left} запроса бесплатно'}_"
         kb     = after_answer_premium_kb() if user["is_premium"] else None
         return await msg.answer(answer + footer, parse_mode="Markdown", reply_markup=kb)
 
