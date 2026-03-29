@@ -39,7 +39,7 @@ ADMIN_IDS       = [int(x) for x in os.getenv("ADMIN_IDS", "6671200724").split(",
 PRICE_DAY       = int(os.getenv("PRICE_DAY",   "100"))
 PRICE_WEEK      = int(os.getenv("PRICE_WEEK",  "350"))
 PRICE_MONTH     = int(os.getenv("PRICE_MONTH", "990"))
-DB_PATH         = os.getenv("DB_PATH", "/data/chatgpt.db")
+DB_PATH         = os.getenv("DB_PATH", "chatgpt.db")
 LAWYER_BOT_URL  = os.getenv("LAWYER_BOT_URL", "https://t.me/moy_yurist_bot")
 
 COOLDOWN_SEC  = 10
