@@ -36,7 +36,7 @@ private:
     juce::Label inputLabel, mixLabel, outputLabel, throwLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAttachment, mixAttachment, outputAttachment, throwAttachment;
 
-    juce::ToggleButton autoButton { "AUTO" }, liveButton { "LIVE" }, syncButton { "SYNC" }, bypassButton { "BYPASS" };
+    juce::ToggleButton autoButton { "AUTO" }, liveButton { "LIVE FX" }, syncButton { "BPM SYNC" }, bypassButton { "BYPASS" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> autoAttachment, liveAttachment, syncAttachment, bypassAttachment;
 
     const std::array<juce::String, 7> ids { "clean","body","air","size","width","delay","space" };
