@@ -60,6 +60,15 @@ void GalaxyLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int wi
 
     g.setColour(juce::Colour(0x5538c8ff));
     g.drawEllipse(cx - radius * 0.17f, cy - radius * 0.17f, radius * 0.34f, radius * 0.34f, 1.0f);
+
+    // Fixed 50% reference point on the scale.
+    const float midAngle = rotaryStartAngle + 0.5f * (rotaryEndAngle - rotaryStartAngle);
+    const float markerR = radius + (hero ? 5.0f : 3.5f);
+    const float mx = cx + std::sin(midAngle) * markerR;
+    const float my = cy - std::cos(midAngle) * markerR;
+    g.setColour(juce::Colour(0xffa9eaff));
+    g.fillEllipse(mx - (hero ? 2.7f : 2.1f), my - (hero ? 2.7f : 2.1f),
+                  hero ? 5.4f : 4.2f, hero ? 5.4f : 4.2f);
 }
 
 void GalaxyLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& b, bool over, bool down)
@@ -75,7 +84,7 @@ void GalaxyLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& 
     g.setColour(on ? juce::Colour(0xff6fdcff) : juce::Colour(0xff33405c));
     g.drawRoundedRectangle(r, 8.0f, on ? 1.8f : 1.0f);
     g.setColour(on ? juce::Colours::white : juce::Colour(0xff9aaccc));
-    g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+    g.setFont(juce::FontOptions(juce::jlimit(10.0f, 16.0f, b.getHeight() * 0.36f), juce::Font::bold));
     g.drawFittedText(b.getButtonText(), b.getLocalBounds(), juce::Justification::centred, 1);
 }
 
@@ -84,7 +93,10 @@ KGVocalEngineAudioProcessorEditor::KGVocalEngineAudioProcessorEditor(KGVocalEngi
 {
     setLookAndFeel(&galaxyLnf);
     setSize(980, 510);
-    setResizable(false, false);
+    setResizable(true, true);
+    setResizeLimits(760, 395, 1470, 765);
+    if (auto* constrainer = getConstrainer())
+        constrainer->setFixedAspectRatio(980.0 / 510.0);
 
     for (size_t i=0; i<knobs.size(); ++i)
     {
@@ -119,43 +131,38 @@ KGVocalEngineAudioProcessorEditor::KGVocalEngineAudioProcessorEditor(KGVocalEngi
     syncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.apvts, "sync", syncButton);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.apvts, "bypass", bypassButton);
 
-    // AUTO is intentionally visible and deterministic: when switched on by the user,
-    // recall the KG LIVE VOCAL golden macro settings, while the processor's hidden
-    // adaptive gain / de-ess / breath logic continues to operate.
+    // AUTO recalls the KG golden start and keeps hidden adaptive processing enabled.
     autoButton.onClick = [this]
     {
-        if (!autoButton.getToggleState())
-            return;
-
-        const std::array<float, 7> golden { 55.0f, 46.0f, 38.0f, 46.0f, 48.0f, 45.0f, 28.0f };
-
-        for (size_t i = 0; i < ids.size(); ++i)
-        {
-            if (auto* p = processor.apvts.getParameter(ids[i]))
-            {
-                p->beginChangeGesture();
-                p->setValueNotifyingHost(p->convertTo0to1(golden[i]));
-                p->endChangeGesture();
-            }
-        }
-
-        const auto setParam = [this](const char* id, float value)
-        {
-            if (auto* p = processor.apvts.getParameter(id))
-            {
-                p->beginChangeGesture();
-                p->setValueNotifyingHost(p->convertTo0to1(value));
-                p->endChangeGesture();
-            }
-        };
-
-        setParam("input",  0.0f);
-        setParam("throw",  0.0f);
-        setParam("mix",  100.0f);
-        setParam("output", 0.0f);
+        if (autoButton.getToggleState())
+            applyGoldenSettings();
     };
 
-    startTimerHz(20);
+    for (auto* b : { &goldenButton, &infoButton, &menuButton })
+    {
+        addAndMakeVisible(*b);
+        b->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff101727));
+        b->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff293b72));
+        b->setColour(juce::TextButton::textColourOffId, juce::Colour(0xffa9bddd));
+        b->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    }
+
+    goldenButton.onClick = [this]
+    {
+        if (auto* p = processor.apvts.getParameter("auto"))
+            p->setValueNotifyingHost(1.0f);
+        applyGoldenSettings();
+    };
+
+    infoButton.onClick = [this]
+    {
+        showHints = !showHints;
+        repaint();
+    };
+
+    menuButton.onClick = [this] { showTopMenu(); };
+
+    startTimerHz(15);
 }
 
 KGVocalEngineAudioProcessorEditor::~KGVocalEngineAudioProcessorEditor()
