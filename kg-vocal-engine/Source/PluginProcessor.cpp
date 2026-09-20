@@ -46,6 +46,71 @@ bool KGVocalEngineAudioProcessor::isBusesLayoutSupported(const BusesLayout& layo
     return in == out && (out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo());
 }
 
+float KGVocalEngineAudioProcessor::getInputMeter(int channel) const noexcept
+{
+    return (channel == 0 ? inputMeterL : inputMeterR).load(std::memory_order_relaxed);
+}
+
+float KGVocalEngineAudioProcessor::getOutputMeter(int channel) const noexcept
+{
+    return (channel == 0 ? outputMeterL : outputMeterR).load(std::memory_order_relaxed);
+}
+
+void KGVocalEngineAudioProcessor::updateMetersFromBuffer(const juce::AudioBuffer<float>& buffer,
+                                                         std::atomic<float>& left,
+                                                         std::atomic<float>& right) noexcept
+{
+    const int n = buffer.getNumSamples();
+    const int chs = buffer.getNumChannels();
+    const float l = (chs > 0 && n > 0) ? buffer.getMagnitude(0, 0, n) : 0.0f;
+    const float r = (chs > 1 && n > 0) ? buffer.getMagnitude(1, 0, n) : l;
+    left.store(l, std::memory_order_relaxed);
+    right.store(r, std::memory_order_relaxed);
+}
+
+void KGVocalEngineAudioProcessor::pushVisualizationSamples(const juce::AudioBuffer<float>& buffer) noexcept
+{
+    const int n = buffer.getNumSamples();
+    const int chs = buffer.getNumChannels();
+    if (n <= 0 || chs <= 0)
+        return;
+
+    int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
+    visualFifo.prepareToWrite(n, start1, size1, start2, size2);
+
+    const auto writeRange = [&](int start, int count, int sourceOffset)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            const int src = sourceOffset + i;
+            const float l = buffer.getSample(0, src);
+            const float r = chs > 1 ? buffer.getSample(1, src) : l;
+            visualSamples[(size_t)(start + i)] = 0.5f * (l + r);
+        }
+    };
+
+    writeRange(start1, size1, 0);
+    writeRange(start2, size2, size1);
+    visualFifo.finishedWrite(size1 + size2);
+}
+
+int KGVocalEngineAudioProcessor::pullVisualizationSamples(float* dest, int maxSamples) noexcept
+{
+    if (dest == nullptr || maxSamples <= 0)
+        return 0;
+
+    int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
+    visualFifo.prepareToRead(maxSamples, start1, size1, start2, size2);
+
+    if (size1 > 0)
+        std::copy_n(visualSamples.data() + start1, size1, dest);
+    if (size2 > 0)
+        std::copy_n(visualSamples.data() + start2, size2, dest + size1);
+
+    visualFifo.finishedRead(size1 + size2);
+    return size1 + size2;
+}
+
 void KGVocalEngineAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
@@ -89,6 +154,12 @@ void KGVocalEngineAudioProcessor::prepareToPlay(double sampleRate, int samplesPe
     mudEnvL = mudEnvR = mudBroadEnvL = mudBroadEnvR = 0.0f;
     phraseEnv = 0.0f;
     doublePhase = 0.0;
+
+    inputMeterL.store(0.0f, std::memory_order_relaxed);
+    inputMeterR.store(0.0f, std::memory_order_relaxed);
+    outputMeterL.store(0.0f, std::memory_order_relaxed);
+    outputMeterR.store(0.0f, std::memory_order_relaxed);
+    visualFifo.reset();
 }
 
 void KGVocalEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -97,7 +168,15 @@ void KGVocalEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const int nCh = buffer.getNumChannels();
     const int n = buffer.getNumSamples();
     if (nCh == 0 || n == 0) return;
-    if (*apvts.getRawParameterValue("bypass") > 0.5f) return;
+
+    updateMetersFromBuffer(buffer, inputMeterL, inputMeterR);
+
+    if (*apvts.getRawParameterValue("bypass") > 0.5f)
+    {
+        updateMetersFromBuffer(buffer, outputMeterL, outputMeterR);
+        pushVisualizationSamples(buffer);
+        return;
+    }
 
     if (dryBuffer.getNumSamples() < n || dryBuffer.getNumChannels() < nCh)
     {
@@ -409,6 +488,9 @@ void KGVocalEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             wet[i] = std::tanh(y * 1.045f) / std::tanh(1.045f);
         }
     }
+
+    updateMetersFromBuffer(buffer, outputMeterL, outputMeterR);
+    pushVisualizationSamples(buffer);
 }
 
 juce::AudioProcessorEditor* KGVocalEngineAudioProcessor::createEditor()
