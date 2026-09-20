@@ -27,6 +27,8 @@ private:
     void applyGoldenSettings();
     void setMainKnobsTo50();
     void showTopMenu();
+    void updateSpectrum();
+    void drawSpectrumAndMeters(juce::Graphics& g);
 
     KGVocalEngineAudioProcessor& processor;
     GalaxyLookAndFeel galaxyLnf;
@@ -47,6 +49,21 @@ private:
     const std::array<juce::String, 7> ids { "clean","body","air","size","width","delay","space" };
     const std::array<juce::String, 7> names { "CLEAN","BODY","AIR","SIZE","WIDTH","DELAY","SPACE" };
 
+    static constexpr int fftOrder = 10;
+    static constexpr int fftSize = 1 << fftOrder;
+    static constexpr int spectrumBands = 56;
+
+    juce::dsp::FFT forwardFFT { fftOrder };
+    juce::dsp::WindowingFunction<float> fftWindow { fftSize, juce::dsp::WindowingFunction<float>::hann, true };
+    std::array<float, fftSize * 2> fftData {};
+    std::array<float, fftSize> fftInput {};
+    std::array<float, 4096> visualPullBuffer {};
+    std::array<float, spectrumBands> spectrumValues {};
+    int fftInputPos = 0;
+
+    float smoothInL = 0.0f, smoothInR = 0.0f;
+    float smoothOutL = 0.0f, smoothOutR = 0.0f;
     float sparklePhase = 0.0f;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(KGVocalEngineAudioProcessorEditor)
 };
