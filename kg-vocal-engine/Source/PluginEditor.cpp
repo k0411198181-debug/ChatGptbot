@@ -370,29 +370,62 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
 void KGVocalEngineAudioProcessorEditor::resized()
 {
+    const float s = (float)getWidth() / 980.0f;
+
+    const auto R = [s](float x, float y, float w, float h)
+    {
+        return juce::Rectangle<int>(
+            juce::roundToInt(x * s),
+            juce::roundToInt(y * s),
+            juce::roundToInt(w * s),
+            juce::roundToInt(h * s));
+    };
+
     const int mainY = 126;
     const int standardW = 112;
     const int heroW = 136;
     const std::array<int, 7> xs { 35, 160, 285, 408, 550, 675, 800 };
 
-    for (int i=0; i<7; ++i)
+    for (int i = 0; i < 7; ++i)
     {
         const bool hero = i == 3;
         const int w = hero ? heroW : standardW;
         const int x = xs[(size_t)i] - (hero ? 12 : 0);
-        labels[(size_t)i].setBounds(x, mainY, w, 24);
-        knobs[(size_t)i].setBounds(x, mainY + 22, w, hero ? 166 : 146);
+
+        labels[(size_t)i].setBounds(R((float)x, (float)mainY, (float)w, 24.0f));
+        labels[(size_t)i].setFont(juce::FontOptions((hero ? 14.5f : 13.0f) * s, juce::Font::bold));
+
+        knobs[(size_t)i].setBounds(R((float)x, (float)(mainY + 22), (float)w, hero ? 166.0f : 146.0f));
+        knobs[(size_t)i].setTextBoxStyle(juce::Slider::TextBoxBelow, false,
+                                         juce::roundToInt((hero ? 72.0f : 62.0f) * s),
+                                         juce::roundToInt(19.0f * s));
     }
 
-    inputLabel.setBounds(36, 398, 82, 19); inputKnob.setBounds(36, 414, 82, 72);
-    throwLabel.setBounds(136, 398, 82, 19); throwKnob.setBounds(136, 414, 82, 72);
-    mixLabel.setBounds(760, 398, 82, 19); mixKnob.setBounds(760, 414, 82, 72);
-    outputLabel.setBounds(860, 398, 82, 19); outputKnob.setBounds(860, 414, 82, 72);
+    inputLabel.setBounds(R(36, 398, 82, 19));
+    inputKnob.setBounds(R(36, 414, 82, 72));
+    throwLabel.setBounds(R(136, 398, 82, 19));
+    throwKnob.setBounds(R(136, 414, 82, 72));
+    mixLabel.setBounds(R(760, 398, 82, 19));
+    mixKnob.setBounds(R(760, 414, 82, 72));
+    outputLabel.setBounds(R(860, 398, 82, 19));
+    outputKnob.setBounds(R(860, 414, 82, 72));
 
-    autoButton.setBounds(286, 407, 84, 32);
-    liveButton.setBounds(382, 407, 84, 32);
-    syncButton.setBounds(478, 407, 84, 32);
-    bypassButton.setBounds(574, 407, 94, 32);
+    for (auto* label : { &inputLabel, &throwLabel, &mixLabel, &outputLabel })
+        label->setFont(juce::FontOptions(11.5f * s, juce::Font::bold));
+
+    inputKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, juce::roundToInt(64.0f * s), juce::roundToInt(18.0f * s));
+    throwKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, juce::roundToInt(64.0f * s), juce::roundToInt(18.0f * s));
+    mixKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, juce::roundToInt(64.0f * s), juce::roundToInt(18.0f * s));
+    outputKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, juce::roundToInt(64.0f * s), juce::roundToInt(18.0f * s));
+
+    autoButton.setBounds(R(286, 407, 84, 32));
+    liveButton.setBounds(R(382, 407, 84, 32));
+    syncButton.setBounds(R(478, 407, 84, 32));
+    bypassButton.setBounds(R(574, 407, 94, 32));
+
+    goldenButton.setBounds(R(748, 18, 66, 25));
+    infoButton.setBounds(R(821, 18, 58, 25));
+    menuButton.setBounds(R(886, 18, 62, 25));
 }
 
 void KGVocalEngineAudioProcessorEditor::timerCallback()
