@@ -61,14 +61,52 @@ void GalaxyLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int wi
     g.setColour(juce::Colour(0x5538c8ff));
     g.drawEllipse(cx - radius * 0.17f, cy - radius * 0.17f, radius * 0.34f, radius * 0.34f, 1.0f);
 
-    // Fixed 50% reference point on the scale.
+    // LED / star ring around the knob, like luminous hour markers.
+    // Dots up to the current pointer light up, with a small animated glow trail.
+    const int ledCount = hero ? 31 : 25;
+    const float now = (float)(juce::Time::getMillisecondCounterHiRes() * 0.001);
+    const float ledR = radius + (hero ? 8.0f : 6.0f);
+
+    for (int i = 0; i < ledCount; ++i)
+    {
+        const float t = (float)i / (float)(ledCount - 1);
+        const float a = rotaryStartAngle + t * (rotaryEndAngle - rotaryStartAngle);
+        const float lx = cx + std::sin(a) * ledR;
+        const float ly = cy - std::cos(a) * ledR;
+
+        const bool active = t <= sliderPos + 0.002f;
+        const float distance = std::abs(t - sliderPos);
+        const float nearPointer = juce::jlimit(0.0f, 1.0f, 1.0f - distance * (hero ? 13.0f : 16.0f));
+        const float pulse = 0.72f + 0.28f * std::sin(now * 5.8f - (float)i * 0.42f);
+
+        const float dot = hero ? 4.0f : 3.2f;
+
+        if (active)
+        {
+            const float glowAlpha = juce::jlimit(0.18f, 0.90f, 0.36f + 0.38f * nearPointer * pulse);
+            g.setColour(juce::Colour::fromFloatRGBA(0.25f, 0.73f, 1.0f, glowAlpha * 0.40f));
+            g.fillEllipse(lx - dot * 1.15f, ly - dot * 1.15f, dot * 2.30f, dot * 2.30f);
+
+            const auto ledColour = juce::Colour(0xff46cfff)
+                                     .interpolatedWith(juce::Colour(0xffa95dff), t);
+            g.setColour(ledColour.withAlpha(0.70f + 0.30f * nearPointer * pulse));
+            g.fillEllipse(lx - dot * 0.50f, ly - dot * 0.50f, dot, dot);
+        }
+        else
+        {
+            g.setColour(juce::Colour(0x44384d6e));
+            g.fillEllipse(lx - dot * 0.38f, ly - dot * 0.38f, dot * 0.76f, dot * 0.76f);
+        }
+    }
+
+    // Fixed 50% reference marker: a brighter neutral star at twelve o'clock on the scale.
     const float midAngle = rotaryStartAngle + 0.5f * (rotaryEndAngle - rotaryStartAngle);
-    const float markerR = radius + (hero ? 5.0f : 3.5f);
+    const float markerR = radius + (hero ? 8.0f : 6.0f);
     const float mx = cx + std::sin(midAngle) * markerR;
     const float my = cy - std::cos(midAngle) * markerR;
-    g.setColour(juce::Colour(0xffa9eaff));
-    g.fillEllipse(mx - (hero ? 2.7f : 2.1f), my - (hero ? 2.7f : 2.1f),
-                  hero ? 5.4f : 4.2f, hero ? 5.4f : 4.2f);
+    g.setColour(juce::Colour(0xffe1f7ff));
+    g.fillEllipse(mx - (hero ? 2.6f : 2.1f), my - (hero ? 2.6f : 2.1f),
+                  hero ? 5.2f : 4.2f, hero ? 5.2f : 4.2f);
 }
 
 void GalaxyLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& b, bool over, bool down)
