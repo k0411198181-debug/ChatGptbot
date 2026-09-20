@@ -176,11 +176,11 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("KG VOCAL ENGINE", 34, 22, 460, 38, juce::Justification::centredLeft);
     g.setColour(juce::Colour(0xff7ba8d8));
     g.setFont(juce::FontOptions(11.5f));
-    g.drawText("GALAXY VOCAL PROCESSOR  •  KG LIVE VOCAL", 37, 59, 500, 20, juce::Justification::centredLeft);
+    g.drawText("GALAXY VOCAL PROCESSOR  |  KG LIVE VOCAL", 37, 59, 500, 20, juce::Justification::centredLeft);
 
     g.setColour(juce::Colour(0xff8c6cff));
     g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-    g.drawText("AUTO SHAPE  •  WIDTH  •  DUCKED DELAY  •  SPACE", 555, 32, 380, 22, juce::Justification::centredRight);
+    g.drawText("AUTO SHAPE  |  WIDTH  |  DUCKED DELAY  |  SPACE", 530, 32, 405, 22, juce::Justification::centredRight);
 
     g.setColour(juce::Colour(0x55273756));
     g.fillRoundedRectangle(24.0f, 92.0f, 932.0f, 296.0f, 18.0f);
@@ -194,7 +194,7 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff52698f));
     g.setFont(juce::FontOptions(10.5f));
-    g.drawText("KG MUSIC RECORDS   •   VST3 TEST BUILD v0.3", 33, 482, 360, 17, juce::Justification::centredLeft);
+    g.drawText("KG MUSIC RECORDS  |  VST3 v0.3.2", 33, 482, 300, 17, juce::Justification::centredLeft);
 }
 
 void KGVocalEngineAudioProcessorEditor::resized()
