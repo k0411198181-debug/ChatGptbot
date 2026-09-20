@@ -187,76 +187,185 @@ void KGVocalEngineAudioProcessorEditor::configureKnob(juce::Slider& k, juce::Lab
     addAndMakeVisible(label);
 }
 
+void KGVocalEngineAudioProcessorEditor::applyGoldenSettings()
+{
+    const std::array<float, 7> golden { 55.0f, 46.0f, 38.0f, 46.0f, 48.0f, 45.0f, 28.0f };
+
+    for (size_t i = 0; i < ids.size(); ++i)
+    {
+        if (auto* p = processor.apvts.getParameter(ids[i]))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(p->convertTo0to1(golden[i]));
+            p->endChangeGesture();
+        }
+    }
+
+    const auto setParam = [this](const char* id, float value)
+    {
+        if (auto* p = processor.apvts.getParameter(id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(p->convertTo0to1(value));
+            p->endChangeGesture();
+        }
+    };
+
+    setParam("input", 0.0f);
+    setParam("throw", 0.0f);
+    setParam("mix", 100.0f);
+    setParam("output", 0.0f);
+}
+
+void KGVocalEngineAudioProcessorEditor::setMainKnobsTo50()
+{
+    for (const auto& id : ids)
+    {
+        if (auto* p = processor.apvts.getParameter(id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(p->convertTo0to1(50.0f));
+            p->endChangeGesture();
+        }
+    }
+}
+
+void KGVocalEngineAudioProcessorEditor::showTopMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem(1, "Recall KG LIVE VOCAL");
+    menu.addItem(2, "Set 7 main knobs to 50%");
+    menu.addItem(3, "Reset THROW to 0%");
+    menu.addSeparator();
+    menu.addItem(4, showHints ? "Hide interface hints" : "Show interface hints");
+
+    auto safeThis = juce::Component::SafePointer<KGVocalEngineAudioProcessorEditor>(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&menuButton),
+        [safeThis](int result)
+        {
+            if (safeThis == nullptr)
+                return;
+
+            if (result == 1)
+            {
+                if (auto* p = safeThis->processor.apvts.getParameter("auto"))
+                    p->setValueNotifyingHost(1.0f);
+                safeThis->applyGoldenSettings();
+            }
+            else if (result == 2)
+            {
+                safeThis->setMainKnobsTo50();
+            }
+            else if (result == 3)
+            {
+                if (auto* p = safeThis->processor.apvts.getParameter("throw"))
+                    p->setValueNotifyingHost(p->convertTo0to1(0.0f));
+            }
+            else if (result == 4)
+            {
+                safeThis->showHints = !safeThis->showHints;
+                safeThis->repaint();
+            }
+        });
+}
+
 void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
-    juce::ColourGradient bg(juce::Colour(0xff070a14), 0, 0,
-                            juce::Colour(0xff11162b), getWidth(), getHeight(), false);
-    bg.addColour(0.42, juce::Colour(0xff0b1020));
+    g.fillAll(juce::Colour(0xff050811));
+
+    const float scale = (float)getWidth() / 980.0f;
+    juce::Graphics::ScopedSaveState saved(g);
+    g.addTransform(juce::AffineTransform::scale(scale));
+
+    const juce::Rectangle<float> logical(0.0f, 0.0f, 980.0f, 510.0f);
+
+    juce::ColourGradient bg(juce::Colour(0xff050813), 0.0f, 0.0f,
+                            juce::Colour(0xff10172c), 980.0f, 510.0f, false);
+    bg.addColour(0.43, juce::Colour(0xff081021));
     g.setGradientFill(bg);
-    g.fillRect(bounds);
+    g.fillRect(logical);
 
-    juce::ColourGradient glowA(juce::Colour(0x552d55ff), 230.0f, 220.0f,
-                               juce::Colour(0x002d55ff), 520.0f, 220.0f, true);
-    g.setGradientFill(glowA);
-    g.fillEllipse(20.0f, 30.0f, 560.0f, 390.0f);
+    // Bright galaxy band inspired by the approved dashboard: visible, but behind the controls.
+    const float pulse = 0.72f + 0.18f * std::sin(juce::MathConstants<float>::twoPi * sparklePhase);
+    juce::ColourGradient halo(juce::Colour::fromFloatRGBA(0.25f, 0.43f, 1.0f, 0.34f * pulse),
+                              490.0f, 170.0f,
+                              juce::Colour::fromFloatRGBA(0.16f, 0.10f, 0.55f, 0.0f),
+                              820.0f, 250.0f, true);
+    halo.addColour(0.40, juce::Colour::fromFloatRGBA(0.48f, 0.28f, 1.0f, 0.20f * pulse));
+    g.setGradientFill(halo);
+    g.fillEllipse(175.0f, 25.0f, 650.0f, 345.0f);
 
-    // Stronger visible galaxy core / nebula, still kept behind controls.
-    juce::ColourGradient galaxyCore(juce::Colour(0x7048b8ff), 490.0f, 235.0f,
-                                    juce::Colour(0x0048b8ff), 760.0f, 235.0f, true);
-    galaxyCore.addColour(0.42, juce::Colour(0x3f9f68ff));
-    g.setGradientFill(galaxyCore);
-    g.fillEllipse(285.0f, 78.0f, 500.0f, 325.0f);
-
-    g.setColour(juce::Colour(0x235fdcff));
-    for (int a = 0; a < 5; ++a)
+    // Luminous galactic arc / horizon.
+    for (int i = 0; i < 5; ++i)
     {
-        juce::Path arm;
-        const float inset = (float)a * 18.0f;
-        arm.addCentredArc(520.0f, 236.0f, 245.0f - inset, 118.0f - inset * 0.30f,
-                          -0.40f + 0.18f * (float)a, 0.20f, 2.75f, true);
-        g.strokePath(arm, juce::PathStrokeType(1.0f + 0.22f * (float)a,
+        juce::Path arc;
+        const float inset = (float)i * 7.5f;
+        arc.addCentredArc(490.0f, 170.0f,
+                          330.0f - inset, 132.0f - inset * 0.35f,
+                          0.0f, 3.95f, 5.48f, true);
+        const float a = (0.28f - i * 0.035f) * pulse;
+        g.setColour(juce::Colour::fromFloatRGBA(0.34f + 0.05f * i, 0.62f, 1.0f, a));
+        g.strokePath(arc, juce::PathStrokeType(i == 0 ? 2.2f : 1.1f,
                                                juce::PathStrokeType::curved,
                                                juce::PathStrokeType::rounded));
     }
-    juce::ColourGradient glowB(juce::Colour(0x553f1d8e), 760.0f, 250.0f,
-                               juce::Colour(0x003f1d8e), 970.0f, 250.0f, true);
-    g.setGradientFill(glowB);
-    g.fillEllipse(560.0f, 80.0f, 430.0f, 330.0f);
 
-    g.setColour(juce::Colour(0x6686baff));
-    for (int i=0; i<58; ++i)
+    // Secondary violet cloud on the right.
+    juce::ColourGradient violet(juce::Colour::fromFloatRGBA(0.45f, 0.18f, 0.95f, 0.22f * pulse),
+                                735.0f, 210.0f,
+                                juce::Colour::fromFloatRGBA(0.18f, 0.08f, 0.40f, 0.0f),
+                                970.0f, 250.0f, true);
+    g.setGradientFill(violet);
+    g.fillEllipse(530.0f, 55.0f, 455.0f, 330.0f);
+
+    // Twinkling star field.
+    for (int i = 0; i < 92; ++i)
     {
-        const int sx = (i * 137 + 41) % getWidth();
-        const int sy = (i * 83 + 27) % getHeight();
-        const float rr = (i % 7 == 0) ? 1.6f : 0.8f;
+        const int sx = (i * 137 + 41) % 980;
+        const int sy = (i * 83 + 27) % 390;
+        const float twinkle = 0.5f + 0.5f * std::sin(juce::MathConstants<float>::twoPi
+                                                    * (sparklePhase + 0.071f * (float)i));
+        const float alpha = 0.16f + 0.64f * twinkle;
+        const float rr = (i % 11 == 0) ? 2.2f : ((i % 5 == 0) ? 1.45f : 0.82f);
+        g.setColour(juce::Colour::fromFloatRGBA(0.58f, 0.78f, 1.0f, alpha));
         g.fillEllipse((float)sx, (float)sy, rr, rr);
     }
 
-    g.setColour(juce::Colour(0xffedf5ff));
-    g.setFont(juce::FontOptions(29.0f, juce::Font::bold));
-    g.drawText("KG VOCAL ENGINE", 34, 22, 460, 38, juce::Justification::centredLeft);
-    g.setColour(juce::Colour(0xff7ba8d8));
-    g.setFont(juce::FontOptions(11.5f));
-    g.drawText("GALAXY VOCAL PROCESSOR  |  KG LIVE VOCAL", 37, 59, 500, 20, juce::Justification::centredLeft);
-
-    g.setColour(juce::Colour(0xff8c6cff));
-    g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-    g.drawText("AUTO SHAPE  |  WIDTH  |  DUCKED DELAY  |  SPACE", 530, 32, 405, 22, juce::Justification::centredRight);
-
-    g.setColour(juce::Colour(0x55273756));
+    // Main glass panel.
+    g.setColour(juce::Colour(0x4a111a2d));
     g.fillRoundedRectangle(24.0f, 92.0f, 932.0f, 296.0f, 18.0f);
-    g.setColour(juce::Colour(0x553e64a8));
+    g.setColour(juce::Colour(0x705b82d4));
     g.drawRoundedRectangle(24.0f, 92.0f, 932.0f, 296.0f, 18.0f, 1.0f);
 
-    g.setColour(juce::Colour(0xff8ca6cf));
-    g.setFont(juce::FontOptions(11.0f));
-    g.drawText("THROW is automatable in REAPER: raise it only on words where the delay tail must bloom.",
-               260, 445, 460, 18, juce::Justification::centred);
+    // Header.
+    g.setColour(juce::Colour(0xffeef6ff));
+    g.setFont(juce::FontOptions(29.0f, juce::Font::bold));
+    g.drawText("KG VOCAL ENGINE", 250, 20, 480, 38, juce::Justification::centred);
+
+    g.setColour(juce::Colour(0xff87a9d8));
+    g.setFont(juce::FontOptions(11.2f));
+    g.drawText("GALAXY VOCAL PROCESSOR  |  KG LIVE VOCAL", 286, 57, 408, 18, juce::Justification::centred);
+
+    g.setColour(juce::Colour(0xff7e9ad1));
+    g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    g.drawText("AUTO SHAPE  |  WIDTH  |  DUCKED DELAY  |  SPACE", 535, 75, 392, 16, juce::Justification::centredRight);
+
+    if (showHints)
+    {
+        g.setColour(juce::Colour(0xff8ca6cf));
+        g.setFont(juce::FontOptions(10.3f));
+        g.drawText("AUTO = GOLDEN START + ADAPTIVE CONTROL   |   LIVE FX = TIGHTER DELAY   |   BPM SYNC = REAPER TEMPO",
+                   182, 442, 616, 16, juce::Justification::centred);
+
+        g.setColour(juce::Colour(0xff708ab5));
+        g.setFont(juce::FontOptions(9.8f));
+        g.drawText("THROW: automate selected words for a larger delay tail.",
+                   250, 458, 480, 15, juce::Justification::centred);
+    }
 
     g.setColour(juce::Colour(0xff52698f));
-    g.setFont(juce::FontOptions(10.5f));
-    g.drawText("KG MUSIC RECORDS  |  VST3 v0.3.4", 33, 482, 300, 17, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(10.0f));
+    g.drawText("KG MUSIC RECORDS  |  VST3 v0.4.0", 33, 482, 300, 17, juce::Justification::centredLeft);
 }
 
 void KGVocalEngineAudioProcessorEditor::resized()
