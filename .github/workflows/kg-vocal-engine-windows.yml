@@ -1,0 +1,36 @@
+name: Build KG Vocal Engine VST3 Windows
+
+on:
+  push:
+    branches: [ "kg-vocal-engine-build" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S kg-vocal-engine -B kg-vocal-engine/build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build VST3
+        shell: pwsh
+        run: cmake --build kg-vocal-engine/build --config Release --target KGVocalEngine_VST3 --parallel 2
+
+      - name: Collect VST3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          $bundle = Get-ChildItem -Path kg-vocal-engine/build -Recurse -Directory -Filter "KG Vocal Engine.vst3" | Select-Object -First 1
+          if (-not $bundle) { throw "KG Vocal Engine.vst3 bundle not found" }
+          Copy-Item -Recurse -Force $bundle.FullName artifact\
+          Copy-Item kg-vocal-engine\README.md artifact\README.txt
+          Get-ChildItem -Recurse artifact
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KG-Vocal-Engine-v0.3-Windows-VST3
+          path: artifact
+          if-no-files-found: error
