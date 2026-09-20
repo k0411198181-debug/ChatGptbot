@@ -56,3 +56,5 @@ target_link_libraries(KGVocalEngine PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+# v0.3.1 host-compatibility rebuild
