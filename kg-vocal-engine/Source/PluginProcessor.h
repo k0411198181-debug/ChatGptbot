@@ -32,6 +32,10 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+    float getInputMeter(int channel) const noexcept;
+    float getOutputMeter(int channel) const noexcept;
+    int pullVisualizationSamples(float* dest, int maxSamples) noexcept;
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
@@ -90,6 +94,18 @@ private:
     float mudEnvL = 0.0f, mudEnvR = 0.0f;
     float mudBroadEnvL = 0.0f, mudBroadEnvR = 0.0f;
     float phraseEnv = 0.0f;
+
+    std::atomic<float> inputMeterL { 0.0f }, inputMeterR { 0.0f };
+    std::atomic<float> outputMeterL { 0.0f }, outputMeterR { 0.0f };
+
+    static constexpr int visualFifoSize = 8192;
+    juce::AbstractFifo visualFifo { visualFifoSize };
+    std::array<float, visualFifoSize> visualSamples {};
+
+    void pushVisualizationSamples(const juce::AudioBuffer<float>& buffer) noexcept;
+    void updateMetersFromBuffer(const juce::AudioBuffer<float>& buffer,
+                                std::atomic<float>& left,
+                                std::atomic<float>& right) noexcept;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KGVocalEngineAudioProcessor)
 };
