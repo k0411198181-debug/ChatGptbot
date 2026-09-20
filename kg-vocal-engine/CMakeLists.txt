@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(KGVocalEngine VERSION 0.3.3)
+project(KGVocalEngine VERSION 0.3.4)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,4 +57,4 @@ target_link_libraries(KGVocalEngine PRIVATE
     juce::juce_recommended_warning_flags
 )
 
-# v0.3.3 Galaxy UI refinement; DSP unchanged
+# v0.3.4 AUTO golden recall + Galaxy UI polish; DSP unchanged
