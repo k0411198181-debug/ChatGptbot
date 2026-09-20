@@ -24,6 +24,9 @@ public:
 private:
     void timerCallback() override;
     void configureKnob(juce::Slider&, juce::Label&, const juce::String& name, bool hero = false);
+    void applyGoldenSettings();
+    void setMainKnobsTo50();
+    void showTopMenu();
 
     KGVocalEngineAudioProcessor& processor;
     GalaxyLookAndFeel galaxyLnf;
@@ -37,7 +40,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAttachment, mixAttachment, outputAttachment, throwAttachment;
 
     juce::ToggleButton autoButton { "AUTO" }, liveButton { "LIVE FX" }, syncButton { "BPM SYNC" }, bypassButton { "BYPASS" };
+    juce::TextButton goldenButton { "GOLDEN" }, infoButton { "INFO" }, menuButton { "MENU" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> autoAttachment, liveAttachment, syncAttachment, bypassAttachment;
+    bool showHints = true;
 
     const std::array<juce::String, 7> ids { "clean","body","air","size","width","delay","space" };
     const std::array<juce::String, 7> names { "CLEAN","BODY","AIR","SIZE","WIDTH","DELAY","SPACE" };
