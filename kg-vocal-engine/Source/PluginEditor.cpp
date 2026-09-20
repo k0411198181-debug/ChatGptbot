@@ -162,7 +162,7 @@ KGVocalEngineAudioProcessorEditor::KGVocalEngineAudioProcessorEditor(KGVocalEngi
 
     menuButton.onClick = [this] { showTopMenu(); };
 
-    startTimerHz(15);
+    startTimerHz(30);
 }
 
 KGVocalEngineAudioProcessorEditor::~KGVocalEngineAudioProcessorEditor()
@@ -269,6 +269,160 @@ void KGVocalEngineAudioProcessorEditor::showTopMenu()
         });
 }
 
+void KGVocalEngineAudioProcessorEditor::updateSpectrum()
+{
+    const int pulled = processor.pullVisualizationSamples(visualPullBuffer.data(),
+                                                          (int)visualPullBuffer.size());
+
+    bool transformed = false;
+
+    for (int i = 0; i < pulled; ++i)
+    {
+        fftInput[(size_t)fftInputPos++] = visualPullBuffer[(size_t)i];
+
+        if (fftInputPos >= fftSize)
+        {
+            std::fill(fftData.begin(), fftData.end(), 0.0f);
+            std::copy(fftInput.begin(), fftInput.end(), fftData.begin());
+            fftWindow.multiplyWithWindowingTable(fftData.data(), fftSize);
+            forwardFFT.performFrequencyOnlyForwardTransform(fftData.data());
+
+            const double sr = processor.getSampleRate() > 1000.0 ? processor.getSampleRate() : 44100.0;
+            const double lowHz = 70.0;
+            const double highHz = juce::jmin(18000.0, sr * 0.46);
+
+            for (int band = 0; band < spectrumBands; ++band)
+            {
+                const double t = ((double)band + 0.5) / (double)spectrumBands;
+                const double freq = lowHz * std::pow(highHz / lowHz, t);
+                const int centre = juce::jlimit(1, fftSize / 2 - 2,
+                                                (int)std::round(freq * (double)fftSize / sr));
+
+                float mag = 0.0f;
+                int count = 0;
+                for (int k = -1; k <= 1; ++k)
+                {
+                    mag += fftData[(size_t)(centre + k)];
+                    ++count;
+                }
+                mag /= (float)count;
+
+                const float db = juce::Decibels::gainToDecibels(mag / (float)fftSize, -96.0f);
+                const float normal = juce::jmap(juce::jlimit(-78.0f, -8.0f, db),
+                                                -78.0f, -8.0f, 0.0f, 1.0f);
+                spectrumValues[(size_t)band] =
+                    juce::jmax(normal, spectrumValues[(size_t)band] * 0.84f);
+            }
+
+            fftInputPos = 0;
+            transformed = true;
+        }
+    }
+
+    if (!transformed)
+        for (auto& v : spectrumValues)
+            v *= 0.975f;
+
+    const auto smoothMeter = [](float current, float target)
+    {
+        return target > current ? (0.58f * current + 0.42f * target)
+                                : current * 0.90f;
+    };
+
+    smoothInL  = smoothMeter(smoothInL,  processor.getInputMeter(0));
+    smoothInR  = smoothMeter(smoothInR,  processor.getInputMeter(1));
+    smoothOutL = smoothMeter(smoothOutL, processor.getOutputMeter(0));
+    smoothOutR = smoothMeter(smoothOutR, processor.getOutputMeter(1));
+}
+
+void KGVocalEngineAudioProcessorEditor::drawSpectrumAndMeters(juce::Graphics& g)
+{
+    const juce::Rectangle<float> scope(224.0f, 394.0f, 532.0f, 78.0f);
+
+    g.setColour(juce::Colour(0x4410172a));
+    g.fillRoundedRectangle(scope, 14.0f);
+    g.setColour(juce::Colour(0x605579c8));
+    g.drawRoundedRectangle(scope, 14.0f, 1.0f);
+
+    // Faint grid.
+    g.setColour(juce::Colour(0x202b4675));
+    for (int i = 1; i < 5; ++i)
+    {
+        const float y = scope.getY() + scope.getHeight() * (float)i / 5.0f;
+        g.drawHorizontalLine((int)y, scope.getX() + 8.0f, scope.getRight() - 8.0f);
+    }
+
+    const float bandGap = 2.0f;
+    const float bandW = (scope.getWidth() - 22.0f - bandGap * (spectrumBands - 1)) / (float)spectrumBands;
+    const float baseY = scope.getBottom() - 9.0f;
+    juce::Path spectrumLine;
+
+    for (int i = 0; i < spectrumBands; ++i)
+    {
+        const float value = juce::jlimit(0.0f, 1.0f, spectrumValues[(size_t)i]);
+        const float x = scope.getX() + 11.0f + (bandW + bandGap) * (float)i;
+        const float h = 3.0f + value * 45.0f;
+        const float y = baseY - h;
+
+        juce::ColourGradient bar(juce::Colour::fromFloatRGBA(0.20f, 0.72f, 1.0f, 0.86f),
+                                 x, baseY,
+                                 juce::Colour::fromFloatRGBA(0.63f, 0.28f, 1.0f, 0.90f),
+                                 x, y, false);
+        g.setGradientFill(bar);
+        g.fillRoundedRectangle(x, y, juce::jmax(1.0f, bandW), h, 1.5f);
+
+        const float px = x + bandW * 0.5f;
+        const float py = y - 2.0f;
+        if (i == 0) spectrumLine.startNewSubPath(px, py);
+        else        spectrumLine.lineTo(px, py);
+    }
+
+    g.setColour(juce::Colour(0x7059a8ff));
+    g.strokePath(spectrumLine, juce::PathStrokeType(5.0f, juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+    g.setColour(juce::Colour(0xffb9ecff));
+    g.strokePath(spectrumLine, juce::PathStrokeType(1.2f, juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+
+    g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
+    g.setColour(juce::Colour(0xff7d9ac7));
+    g.drawText("VOCAL SPECTRUM", 393, 395, 194, 12, juce::Justification::centred);
+
+    const auto drawMeter = [&g](float x, float y, float w, float l, float r, const juce::String& label)
+    {
+        g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+        g.setColour(juce::Colour(0xff718bb5));
+        g.drawText(label, (int)x, (int)(y - 13.0f), (int)w, 11, juce::Justification::centred);
+
+        const int segments = 14;
+        const float gap = 1.5f;
+        const float segW = (w - gap * (segments - 1)) / (float)segments;
+
+        for (int row = 0; row < 2; ++row)
+        {
+            const float value = juce::jlimit(0.0f, 1.0f, std::sqrt(row == 0 ? l : r));
+            const int lit = juce::roundToInt(value * (float)segments);
+            for (int i = 0; i < segments; ++i)
+            {
+                const float sx = x + (segW + gap) * (float)i;
+                const bool on = i < lit;
+                g.setColour(on ? juce::Colour(0xff4abfff).interpolatedWith(juce::Colour(0xffa65cff),
+                              (float)i / (float)(segments - 1))
+                               : juce::Colour(0x242b3852));
+                g.fillRoundedRectangle(sx, y + row * 8.0f, segW, 4.5f, 1.2f);
+            }
+        }
+
+        g.setColour(juce::Colour(0xff6f87ad));
+        g.setFont(juce::FontOptions(7.5f));
+        g.drawText("L", (int)(x - 10.0f), (int)(y - 2.0f), 8, 8, juce::Justification::centred);
+        g.drawText("R", (int)(x - 10.0f), (int)(y + 6.0f), 8, 8, juce::Justification::centred);
+    };
+
+    drawMeter(228.0f, 412.0f, 72.0f, smoothInL, smoothInR, "IN");
+    drawMeter(680.0f, 412.0f, 72.0f, smoothOutL, smoothOutR, "OUT");
+}
+
 void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(0xff050811));
@@ -286,7 +440,10 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
     g.fillRect(logical);
 
     // Bright galaxy band inspired by the approved dashboard: visible, but behind the controls.
-    const float pulse = 0.72f + 0.18f * std::sin(juce::MathConstants<float>::twoPi * sparklePhase);
+    const float signalEnergy = juce::jlimit(0.0f, 1.0f, std::sqrt(juce::jmax(smoothOutL, smoothOutR)));
+    const float pulse = 0.68f
+                      + 0.17f * std::sin(juce::MathConstants<float>::twoPi * sparklePhase)
+                      + 0.22f * signalEnergy;
     juce::ColourGradient halo(juce::Colour::fromFloatRGBA(0.25f, 0.43f, 1.0f, 0.34f * pulse),
                               490.0f, 170.0f,
                               juce::Colour::fromFloatRGBA(0.16f, 0.10f, 0.55f, 0.0f),
@@ -337,6 +494,8 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0x705b82d4));
     g.drawRoundedRectangle(24.0f, 92.0f, 932.0f, 296.0f, 18.0f, 1.0f);
 
+    drawSpectrumAndMeters(g);
+
     // Header.
     g.setColour(juce::Colour(0xffeef6ff));
     g.setFont(juce::FontOptions(29.0f, juce::Font::bold));
@@ -365,7 +524,7 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff52698f));
     g.setFont(juce::FontOptions(10.0f));
-    g.drawText("KG MUSIC RECORDS  |  VST3 v0.4.0", 33, 482, 300, 17, juce::Justification::centredLeft);
+    g.drawText("KG MUSIC RECORDS  |  VST3 v0.5.0", 33, 482, 300, 17, juce::Justification::centredLeft);
 }
 
 void KGVocalEngineAudioProcessorEditor::resized()
@@ -430,7 +589,11 @@ void KGVocalEngineAudioProcessorEditor::resized()
 
 void KGVocalEngineAudioProcessorEditor::timerCallback()
 {
-    sparklePhase += 0.04f;
-    if (sparklePhase > 1.0f) sparklePhase -= 1.0f;
+    updateSpectrum();
+
+    sparklePhase += 0.018f;
+    if (sparklePhase > 1.0f)
+        sparklePhase -= 1.0f;
+
     repaint();
 }
