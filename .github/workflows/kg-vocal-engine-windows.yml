@@ -3,6 +3,8 @@ name: Build KG Vocal Engine VST3 Windows
 on:
   push:
     branches: [ "kg-vocal-engine-build" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
