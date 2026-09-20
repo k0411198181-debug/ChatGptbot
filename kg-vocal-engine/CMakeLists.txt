@@ -1,8 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
-project(KGVocalEngine VERSION 0.3.0)
+project(KGVocalEngine VERSION 0.3.1)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Self-contained Windows build: avoid requiring a separate MSVC redistributable.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 include(FetchContent)
 FetchContent_Declare(
@@ -25,6 +30,7 @@ juce_add_plugin(KGVocalEngine
     PLUGIN_MANUFACTURER_CODE Kgmr
     PLUGIN_CODE Kgve
     FORMATS VST3
+    VST3_CATEGORIES Fx Vocals
     PRODUCT_NAME "KG Vocal Engine"
 )
 
