@@ -119,6 +119,42 @@ KGVocalEngineAudioProcessorEditor::KGVocalEngineAudioProcessorEditor(KGVocalEngi
     syncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.apvts, "sync", syncButton);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.apvts, "bypass", bypassButton);
 
+    // AUTO is intentionally visible and deterministic: when switched on by the user,
+    // recall the KG LIVE VOCAL golden macro settings, while the processor's hidden
+    // adaptive gain / de-ess / breath logic continues to operate.
+    autoButton.onClick = [this]
+    {
+        if (!autoButton.getToggleState())
+            return;
+
+        const std::array<float, 7> golden { 55.0f, 46.0f, 38.0f, 46.0f, 48.0f, 45.0f, 28.0f };
+
+        for (size_t i = 0; i < ids.size(); ++i)
+        {
+            if (auto* p = processor.apvts.getParameter(ids[i]))
+            {
+                p->beginChangeGesture();
+                p->setValueNotifyingHost(p->convertTo0to1(golden[i]));
+                p->endChangeGesture();
+            }
+        }
+
+        const auto setParam = [this](const char* id, float value)
+        {
+            if (auto* p = processor.apvts.getParameter(id))
+            {
+                p->beginChangeGesture();
+                p->setValueNotifyingHost(p->convertTo0to1(value));
+                p->endChangeGesture();
+            }
+        };
+
+        setParam("input",  0.0f);
+        setParam("throw",  0.0f);
+        setParam("mix",  100.0f);
+        setParam("output", 0.0f);
+    };
+
     startTimerHz(20);
 }
 
@@ -213,7 +249,7 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff52698f));
     g.setFont(juce::FontOptions(10.5f));
-    g.drawText("KG MUSIC RECORDS  |  VST3 v0.3.2", 33, 482, 300, 17, juce::Justification::centredLeft);
+    g.drawText("KG MUSIC RECORDS  |  VST3 v0.3.4", 33, 482, 300, 17, juce::Justification::centredLeft);
 }
 
 void KGVocalEngineAudioProcessorEditor::resized()
