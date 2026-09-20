@@ -1,0 +1,36 @@
+name: Build Music Engeen VST3 Windows
+
+on:
+  push:
+    branches: [ "music-engeen-build" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S music-engeen -B music-engeen/build -G "Visual Studio 18 2026" -A x64
+
+      - name: Build VST3
+        shell: pwsh
+        run: cmake --build music-engeen/build --config Release --target MusicEngeen_VST3 --parallel 2
+
+      - name: Collect VST3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          $bundle = Get-ChildItem -Path music-engeen/build -Recurse -Directory -Filter "Music Engeen.vst3" | Select-Object -First 1
+          if (-not $bundle) { throw "Music Engeen.vst3 bundle not found" }
+          Copy-Item -Recurse -Force $bundle.FullName artifact\
+          Copy-Item music-engeen\README.md artifact\README.txt
+          Get-ChildItem -Recurse artifact
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Music-Engeen-v0.1-Windows-VST3
+          path: artifact
+          if-no-files-found: error
