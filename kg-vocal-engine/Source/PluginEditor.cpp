@@ -157,6 +157,25 @@ void KGVocalEngineAudioProcessorEditor::paint(juce::Graphics& g)
                                juce::Colour(0x002d55ff), 520.0f, 220.0f, true);
     g.setGradientFill(glowA);
     g.fillEllipse(20.0f, 30.0f, 560.0f, 390.0f);
+
+    // Stronger visible galaxy core / nebula, still kept behind controls.
+    juce::ColourGradient galaxyCore(juce::Colour(0x7048b8ff), 490.0f, 235.0f,
+                                    juce::Colour(0x0048b8ff), 760.0f, 235.0f, true);
+    galaxyCore.addColour(0.42, juce::Colour(0x3f9f68ff));
+    g.setGradientFill(galaxyCore);
+    g.fillEllipse(285.0f, 78.0f, 500.0f, 325.0f);
+
+    g.setColour(juce::Colour(0x235fdcff));
+    for (int a = 0; a < 5; ++a)
+    {
+        juce::Path arm;
+        const float inset = (float)a * 18.0f;
+        arm.addCentredArc(520.0f, 236.0f, 245.0f - inset, 118.0f - inset * 0.30f,
+                          -0.40f + 0.18f * (float)a, 0.20f, 2.75f, true);
+        g.strokePath(arm, juce::PathStrokeType(1.0f + 0.22f * (float)a,
+                                               juce::PathStrokeType::curved,
+                                               juce::PathStrokeType::rounded));
+    }
     juce::ColourGradient glowB(juce::Colour(0x553f1d8e), 760.0f, 250.0f,
                                juce::Colour(0x003f1d8e), 970.0f, 250.0f, true);
     g.setGradientFill(glowB);
