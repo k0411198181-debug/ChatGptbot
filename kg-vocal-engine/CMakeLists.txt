@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(KGVocalEngine VERSION 0.4.0)
+project(KGVocalEngine VERSION 0.5.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,4 +57,4 @@ target_link_libraries(KGVocalEngine PRIVATE
     juce::juce_recommended_warning_flags
 )
 
-# v0.4.0 responsive animated Galaxy dashboard; DSP unchanged
+# v0.5.0 animated Galaxy + real FFT spectrum + meters; DSP processing unchanged
