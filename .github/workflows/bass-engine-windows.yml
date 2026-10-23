@@ -1,0 +1,36 @@
+name: Build Bass Engine VST3 Windows
+
+on:
+  push:
+    branches: [ "bass-engine-build" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S bass-engine -B bass-engine/build -G "Visual Studio 18 2026" -A x64
+
+      - name: Build VST3
+        shell: pwsh
+        run: cmake --build bass-engine/build --config Release --target BassEngine_VST3 --parallel 2
+
+      - name: Collect VST3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          $bundle = Get-ChildItem -Path bass-engine/build -Recurse -Directory -Filter "Bass Engine.vst3" | Select-Object -First 1
+          if (-not $bundle) { throw "Bass Engine.vst3 bundle not found" }
+          Copy-Item -Recurse -Force $bundle.FullName artifact\
+          Copy-Item bass-engine\README.md artifact\README.txt
+          Get-ChildItem -Recurse artifact
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bass-Engine-v0.1-Windows-VST3
+          path: artifact
+          if-no-files-found: error
