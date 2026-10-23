@@ -61,10 +61,11 @@ private:
     juce::TextButton goldenButton { "GOLDEN" };
     juce::ToggleButton maxButton { "MAX" };
     juce::ToggleButton deltaButton { "DELTA" };
+    juce::ToggleButton imagerButton { "IMAGER" };
     juce::ToggleButton bypassButton { "BYPASS" };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
-        autoAttachment, maxAttachment, deltaAttachment, bypassAttachment;
+        autoAttachment, maxAttachment, deltaAttachment, imagerAttachment, bypassAttachment;
 
     juce::TextButton prevPresetButton { "<" };
     juce::TextButton presetButton { "GOLDEN SYNTH" };
