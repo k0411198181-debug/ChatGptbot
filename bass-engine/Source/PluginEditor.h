@@ -27,7 +27,18 @@ public:
 private:
     void timerCallback() override;
     void configureKnob(juce::Slider&, juce::Label&, const juce::String& name, bool hero = false);
+
+    void setParameter(const juce::String& id, float plainValue);
+    void applyPreset(int index);
     void applyGoldenSettings();
+    void stepPreset(int delta);
+    void showPresetMenu();
+    void showMainMenu();
+
+    void captureState(juce::MemoryBlock& target);
+    void restoreState(const juce::MemoryBlock& source);
+    void updatePresetLabel(const juce::String& name);
+
     void updateSpectrum();
     void drawSpectrumAndMeters(juce::Graphics&);
 
@@ -44,6 +55,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
         clarityAttachment, mixAttachment, outputAttachment;
 
+    juce::ComboBox modeBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeAttachment;
+
     juce::ToggleButton autoButton { "AUTO" };
     juce::TextButton goldenButton { "GOLDEN" };
     juce::ToggleButton maxButton { "MAX" };
@@ -51,6 +65,26 @@ private:
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
         autoAttachment, maxAttachment, bypassAttachment;
+
+    juce::TextButton prevPresetButton { "<" };
+    juce::TextButton presetButton { "GOLDEN BASS" };
+    juce::TextButton nextPresetButton { ">" };
+    juce::TextButton saveButton { "SAVE" };
+    juce::TextButton abButton { "A/B : A" };
+    juce::TextButton resetButton { "RESET" };
+    juce::TextButton menuButton { "MENU" };
+
+    juce::MemoryBlock stateA, stateB, userSnapshot;
+    bool activeA = true;
+    int currentPreset = 0;
+
+    const juce::StringArray presetNames {
+        "GOLDEN BASS",
+        "DEEP WEIGHT",
+        "TIGHT BASS",
+        "DRUM IMPACT",
+        "KICK FAT"
+    };
 
     const std::array<juce::String, 7> ids {
         "sub", "drive", "punch", "weight", "tight", "harmonics", "loud"
