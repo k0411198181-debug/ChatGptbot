@@ -6,6 +6,15 @@ BassEngineLookAndFeel::BassEngineLookAndFeel()
     setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff111827));
     setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0x0037465f));
     setColour(juce::ToggleButton::textColourId, juce::Colour(0xfff3f6ff));
+
+    setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff111827));
+    setColour(juce::ComboBox::textColourId, juce::Colour(0xffffd36f));
+    setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff66532f));
+    setColour(juce::ComboBox::arrowColourId, juce::Colour(0xffffd36f));
+    setColour(juce::PopupMenu::backgroundColourId, juce::Colour(0xff0c111b));
+    setColour(juce::PopupMenu::textColourId, juce::Colour(0xffe8eef9));
+    setColour(juce::PopupMenu::highlightedBackgroundColourId, juce::Colour(0xff284a7a));
+    setColour(juce::PopupMenu::highlightedTextColourId, juce::Colours::white);
 }
 
 void BassEngineLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
@@ -50,7 +59,7 @@ void BassEngineLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, in
 
     juce::Path bgArc;
     bgArc.addCentredArc(cx, cy, radius - 4.0f, radius - 4.0f, 0.0f,
-                       rotaryStartAngle, rotaryEndAngle, true);
+                        rotaryStartAngle, rotaryEndAngle, true);
     g.setColour(juce::Colour(0xff2b3448));
     g.strokePath(bgArc, juce::PathStrokeType(hero ? 5.5f : 4.0f,
                                              juce::PathStrokeType::curved,
@@ -58,7 +67,7 @@ void BassEngineLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, in
 
     juce::Path valueArc;
     valueArc.addCentredArc(cx, cy, radius - 4.0f, radius - 4.0f, 0.0f,
-                          rotaryStartAngle, angle, true);
+                           rotaryStartAngle, angle, true);
     juce::ColourGradient arc(c1, cx - radius, cy, c2, cx + radius, cy, false);
     g.setGradientFill(arc);
     g.strokePath(valueArc, juce::PathStrokeType(hero ? 6.0f : 4.3f,
@@ -177,6 +186,13 @@ BassEngineAudioProcessorEditor::BassEngineAudioProcessorEditor(BassEngineAudioPr
     outputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.apvts, "output", outputKnob);
 
+    modeBox.addItem("BASS", 1);
+    modeBox.addItem("DRUM / KICK", 2);
+    modeBox.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(modeBox);
+    modeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        processor.apvts, "mode", modeBox);
+
     for (auto* b : { &autoButton, &maxButton, &bypassButton })
     {
         b->setClickingTogglesState(true);
@@ -185,6 +201,7 @@ BassEngineAudioProcessorEditor::BassEngineAudioProcessorEditor(BassEngineAudioPr
 
     addAndMakeVisible(goldenButton);
     goldenButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff5b4317));
+    goldenButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff7a5a1c));
     goldenButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffffda80));
 
     autoAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
@@ -194,6 +211,25 @@ BassEngineAudioProcessorEditor::BassEngineAudioProcessorEditor(BassEngineAudioPr
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.apvts, "bypass", bypassButton);
 
+    const auto styleTopButton = [this](juce::TextButton& b, bool gold)
+    {
+        b.setColour(juce::TextButton::buttonColourId,
+                    gold ? juce::Colour(0xff463716) : juce::Colour(0xff111827));
+        b.setColour(juce::TextButton::buttonOnColourId,
+                    gold ? juce::Colour(0xff6a4d18) : juce::Colour(0xff263d64));
+        b.setColour(juce::TextButton::textColourOffId,
+                    gold ? juce::Colour(0xffffd97d) : juce::Colour(0xffcbd9ec));
+        addAndMakeVisible(b);
+    };
+
+    styleTopButton(prevPresetButton, false);
+    styleTopButton(presetButton, true);
+    styleTopButton(nextPresetButton, false);
+    styleTopButton(saveButton, false);
+    styleTopButton(abButton, false);
+    styleTopButton(resetButton, false);
+    styleTopButton(menuButton, false);
+
     autoButton.onClick = [this]
     {
         if (autoButton.getToggleState())
@@ -201,6 +237,40 @@ BassEngineAudioProcessorEditor::BassEngineAudioProcessorEditor(BassEngineAudioPr
     };
 
     goldenButton.onClick = [this] { applyGoldenSettings(); };
+
+    prevPresetButton.onClick = [this] { stepPreset(-1); };
+    nextPresetButton.onClick = [this] { stepPreset(1); };
+    presetButton.onClick = [this] { showPresetMenu(); };
+
+    saveButton.onClick = [this]
+    {
+        captureState(userSnapshot);
+        updatePresetLabel("USER");
+    };
+
+    abButton.onClick = [this]
+    {
+        if (activeA)
+        {
+            captureState(stateA);
+            restoreState(stateB);
+            activeA = false;
+            abButton.setButtonText("A/B : B");
+        }
+        else
+        {
+            captureState(stateB);
+            restoreState(stateA);
+            activeA = true;
+            abButton.setButtonText("A/B : A");
+        }
+    };
+
+    resetButton.onClick = [this] { applyGoldenSettings(); };
+    menuButton.onClick = [this] { showMainMenu(); };
+
+    captureState(stateA);
+    stateB = stateA;
 
     startTimerHz(30);
 }
@@ -228,41 +298,151 @@ void BassEngineAudioProcessorEditor::configureKnob(juce::Slider& k, juce::Label&
     addAndMakeVisible(label);
 }
 
+void BassEngineAudioProcessorEditor::setParameter(const juce::String& id, float plainValue)
+{
+    if (auto* p = processor.apvts.getParameter(id))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost(p->convertTo0to1(plainValue));
+        p->endChangeGesture();
+    }
+}
+
+void BassEngineAudioProcessorEditor::applyPreset(int index)
+{
+    currentPreset = juce::jlimit(0, presetNames.size() - 1, index);
+
+    struct Preset
+    {
+        float sub, drive, punch, weight, tight, harmonics, loud;
+        float clarity, mix, output, mode;
+        bool autoMode, maxMode;
+    };
+
+    static const std::array<Preset, 5> presets {{
+        { 44, 44, 42, 66, 62, 48, 28, 48, 100, 0, 0, true,  false }, // Golden Bass
+        { 58, 50, 38, 74, 68, 50, 30, 46, 100, 0, 0, true,  false }, // Deep Weight
+        { 34, 46, 48, 64, 78, 54, 30, 54, 100, 0, 0, true,  false }, // Tight Bass
+        { 24, 38, 70, 62, 72, 38, 34, 50, 100, 0, 1, true,  false }, // Drum Impact
+        { 32, 46, 62, 72, 66, 44, 38, 46, 100, 0, 1, true,  false }  // Kick Fat
+    }};
+
+    const auto& v = presets[(size_t)currentPreset];
+
+    setParameter("mode", v.mode);
+    setParameter("sub", v.sub);
+    setParameter("drive", v.drive);
+    setParameter("punch", v.punch);
+    setParameter("weight", v.weight);
+    setParameter("tight", v.tight);
+    setParameter("harmonics", v.harmonics);
+    setParameter("loud", v.loud);
+    setParameter("clarity", v.clarity);
+    setParameter("mix", v.mix);
+    setParameter("output", v.output);
+    setParameter("auto", v.autoMode ? 1.0f : 0.0f);
+    setParameter("max", v.maxMode ? 1.0f : 0.0f);
+
+    updatePresetLabel(presetNames[currentPreset]);
+}
+
 void BassEngineAudioProcessorEditor::applyGoldenSettings()
 {
-    const std::array<float, 7> golden {
-        52.0f, 42.0f, 48.0f, 62.0f, 50.0f, 44.0f, 30.0f
-    };
+    const bool drumMode = processor.apvts.getRawParameterValue("mode")->load() > 0.5f;
+    applyPreset(drumMode ? 3 : 0);
+}
 
-    for (size_t i = 0; i < ids.size(); ++i)
+void BassEngineAudioProcessorEditor::stepPreset(int delta)
+{
+    int next = currentPreset + delta;
+    if (next < 0) next = presetNames.size() - 1;
+    if (next >= presetNames.size()) next = 0;
+    applyPreset(next);
+}
+
+void BassEngineAudioProcessorEditor::showPresetMenu()
+{
+    juce::PopupMenu menu;
+
+    for (int i = 0; i < presetNames.size(); ++i)
+        menu.addItem(i + 1, presetNames[i], true, i == currentPreset);
+
+    if (userSnapshot.getSize() > 0)
     {
-        if (auto* p = processor.apvts.getParameter(ids[i]))
-        {
-            p->beginChangeGesture();
-            p->setValueNotifyingHost(p->convertTo0to1(golden[i]));
-            p->endChangeGesture();
-        }
+        menu.addSeparator();
+        menu.addItem(100, "USER SNAPSHOT");
     }
 
-    const auto setParam = [this](const char* id, float value)
-    {
-        if (auto* p = processor.apvts.getParameter(id))
+    juce::Component::SafePointer<BassEngineAudioProcessorEditor> safeThis(this);
+
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetComponent(&presetButton),
+        [safeThis](int result)
         {
-            p->beginChangeGesture();
-            p->setValueNotifyingHost(p->convertTo0to1(value));
-            p->endChangeGesture();
-        }
-    };
+            if (safeThis == nullptr || result == 0)
+                return;
 
-    setParam("clarity", 45.0f);
-    setParam("mix", 100.0f);
-    setParam("output", 0.0f);
+            if (result >= 1 && result <= safeThis->presetNames.size())
+                safeThis->applyPreset(result - 1);
+            else if (result == 100)
+            {
+                safeThis->restoreState(safeThis->userSnapshot);
+                safeThis->updatePresetLabel("USER");
+            }
+        });
+}
 
-    if (auto* p = processor.apvts.getParameter("auto"))
-        p->setValueNotifyingHost(1.0f);
+void BassEngineAudioProcessorEditor::showMainMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem(1, "Golden for current mode");
+    menu.addItem(2, "Load USER snapshot", userSnapshot.getSize() > 0);
+    menu.addSeparator();
+    menu.addItem(3, "About Bass Engine v0.2");
 
-    if (auto* p = processor.apvts.getParameter("max"))
-        p->setValueNotifyingHost(0.0f);
+    juce::Component::SafePointer<BassEngineAudioProcessorEditor> safeThis(this);
+
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetComponent(&menuButton),
+        [safeThis](int result)
+        {
+            if (safeThis == nullptr)
+                return;
+
+            if (result == 1)
+                safeThis->applyGoldenSettings();
+            else if (result == 2 && safeThis->userSnapshot.getSize() > 0)
+            {
+                safeThis->restoreState(safeThis->userSnapshot);
+                safeThis->updatePresetLabel("USER");
+            }
+            else if (result == 3)
+            {
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::InfoIcon,
+                    "Bass Engine v0.2",
+                    "Galaxy Signal Records\n\nBASS mode controls boom and builds weight.\n"
+                    "DRUM / KICK mode shifts the energy toward punch and body.\n\n"
+                    "AUTO protects excessive low end. MAX unlocks aggressive processing.");
+            }
+        });
+}
+
+void BassEngineAudioProcessorEditor::captureState(juce::MemoryBlock& target)
+{
+    target.reset();
+    processor.getStateInformation(target);
+}
+
+void BassEngineAudioProcessorEditor::restoreState(const juce::MemoryBlock& source)
+{
+    if (source.getSize() > 0)
+        processor.setStateInformation(source.getData(), (int)source.getSize());
+}
+
+void BassEngineAudioProcessorEditor::updatePresetLabel(const juce::String& name)
+{
+    presetButton.setButtonText(name);
 }
 
 void BassEngineAudioProcessorEditor::updateSpectrum()
@@ -378,7 +558,7 @@ void BassEngineAudioProcessorEditor::drawSpectrumAndMeters(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xffbea46e));
     g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-    g.drawText("BASS SPECTRUM  24 Hz - 6 kHz", 390, 486, 244, 12,
+    g.drawText("LOW END SPECTRUM  24 Hz - 6 kHz", 390, 486, 244, 12,
                juce::Justification::centred);
 
     const auto meter = [&g](float x, float y, float w, float l, float r, const juce::String& label)
@@ -447,18 +627,17 @@ void BassEngineAudioProcessorEditor::paint(juce::Graphics& g)
     g.setGradientFill(goldGlow);
     g.fillEllipse(330.0f, 80.0f, 650.0f, 385.0f);
 
-    // Planet / moon in the upper-right, inspired by the concept face.
-    juce::ColourGradient planet(juce::Colour(0xffd4d8e4), 869.0f, 76.0f,
-                                juce::Colour(0xff33394b), 920.0f, 132.0f, true);
+    juce::ColourGradient planet(juce::Colour(0xffd4d8e4), 879.0f, 72.0f,
+                                juce::Colour(0xff33394b), 930.0f, 128.0f, true);
     planet.addColour(0.42, juce::Colour(0xff777e92));
     g.setGradientFill(planet);
-    g.fillEllipse(844.0f, 52.0f, 92.0f, 92.0f);
+    g.fillEllipse(854.0f, 48.0f, 92.0f, 92.0f);
     g.setColour(juce::Colour(0x66ffffff));
-    g.drawEllipse(844.0f, 52.0f, 92.0f, 92.0f, 1.0f);
+    g.drawEllipse(854.0f, 48.0f, 92.0f, 92.0f, 1.0f);
     g.setColour(juce::Colour(0x55707a90));
-    g.fillEllipse(865.0f, 75.0f, 18.0f, 10.0f);
-    g.fillEllipse(897.0f, 94.0f, 14.0f, 9.0f);
-    g.fillEllipse(878.0f, 112.0f, 10.0f, 6.0f);
+    g.fillEllipse(875.0f, 71.0f, 18.0f, 10.0f);
+    g.fillEllipse(907.0f, 90.0f, 14.0f, 9.0f);
+    g.fillEllipse(888.0f, 108.0f, 10.0f, 6.0f);
 
     for (int i = 0; i < 110; ++i)
     {
@@ -474,7 +653,12 @@ void BassEngineAudioProcessorEditor::paint(juce::Graphics& g)
         g.fillEllipse((float)sx, (float)sy, rr, rr);
     }
 
-    // Brushed-metal style panels.
+    // Top control strip: the piece missing in v0.1.
+    g.setColour(juce::Colour(0x9a0c111a));
+    g.fillRoundedRectangle(286.0f, 15.0f, 536.0f, 48.0f, 10.0f);
+    g.setColour(juce::Colour(0x926b5935));
+    g.drawRoundedRectangle(286.0f, 15.0f, 536.0f, 48.0f, 10.0f, 1.0f);
+
     g.setColour(juce::Colour(0x72111622));
     g.fillRoundedRectangle(22.0f, 92.0f, 758.0f, 370.0f, 18.0f);
     g.setColour(juce::Colour(0x7a53627c));
@@ -486,21 +670,21 @@ void BassEngineAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawRoundedRectangle(792.0f, 158.0f, 208.0f, 304.0f, 18.0f, 1.0f);
 
     g.setColour(juce::Colour(0xfff4f7ff));
-    g.setFont(juce::FontOptions(28.5f, juce::Font::bold));
-    g.drawText("BASS ENGINE", 32, 20, 380, 38, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(25.5f, juce::Font::bold));
+    g.drawText("BASS ENGINE", 30, 18, 248, 34, juce::Justification::centredLeft);
 
     g.setColour(juce::Colour(0xffffd36d));
-    g.setFont(juce::FontOptions(10.8f, juce::Font::bold));
-    g.drawText("GALAXY SIGNAL RECORDS", 35, 58, 260, 17, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(10.4f, juce::Font::bold));
+    g.drawText("GALAXY SIGNAL RECORDS", 33, 52, 245, 16, juce::Justification::centredLeft);
 
     g.setColour(juce::Colour(0xff8399bb));
-    g.setFont(juce::FontOptions(10.4f));
+    g.setFont(juce::FontOptions(9.8f));
     g.drawText("SUB IMPACT  |  WEIGHT  |  SATURATION  |  PUNCH  |  TIGHT CONTROL",
-               328, 64, 446, 16, juce::Justification::centredRight);
+               320, 68, 450, 15, juce::Justification::centred);
 
     g.setColour(juce::Colour(0xffffc95d));
-    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    g.drawText("LOW END CONTROL", 806, 174, 180, 18, juce::Justification::centred);
+    g.setFont(juce::FontOptions(10.2f, juce::Font::bold));
+    g.drawText("MODE", 806, 164, 180, 13, juce::Justification::centred);
 
     g.setColour(juce::Colour(0xff8699b5));
     g.setFont(juce::FontOptions(9.2f));
@@ -511,13 +695,13 @@ void BassEngineAudioProcessorEditor::paint(juce::Graphics& g)
     drawSpectrumAndMeters(g);
 
     g.setColour(juce::Colour(0xff7f7358));
-    g.setFont(juce::FontOptions(9.4f));
-    g.drawText("AUTO = GOLDEN + ADAPTIVE LOW PROTECTION   |   MAX = UNLOCK AGGRESSIVE FAT MODE",
-               205, 566, 614, 16, juce::Justification::centred);
+    g.setFont(juce::FontOptions(9.2f));
+    g.drawText("BASS = TIGHT LOW WEIGHT   |   DRUM/KICK = BODY + PUNCH   |   MAX = AGGRESSIVE FAT MODE",
+               194, 566, 646, 16, juce::Justification::centred);
 
     g.setColour(juce::Colour(0xff596981));
     g.setFont(juce::FontOptions(9.0f));
-    g.drawText("Bass Engine VST3  v0.1", 32, 574, 190, 14, juce::Justification::centredLeft);
+    g.drawText("Bass Engine VST3  v0.2", 32, 574, 190, 14, juce::Justification::centredLeft);
 }
 
 void BassEngineAudioProcessorEditor::resized()
@@ -531,7 +715,6 @@ void BassEngineAudioProcessorEditor::resized()
             juce::roundToInt(w * s), juce::roundToInt(h * s));
     };
 
-    // Top row: SUB / DRIVE / PUNCH / WEIGHT(hero)
     const std::array<juce::Rectangle<float>, 7> knobRects {
         juce::Rectangle<float>(48, 132, 126, 156),
         juce::Rectangle<float>(206, 132, 126, 156),
@@ -573,10 +756,21 @@ void BassEngineAudioProcessorEditor::resized()
     outputKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false,
                                juce::roundToInt(58.0f * s), juce::roundToInt(17.0f * s));
 
-    autoButton.setBounds(R(806, 205, 82, 28));
-    goldenButton.setBounds(R(902, 205, 82, 28));
-    maxButton.setBounds(R(806, 245, 82, 28));
-    bypassButton.setBounds(R(902, 245, 82, 28));
+    // New top menu.
+    prevPresetButton.setBounds(R(296, 25, 28, 28));
+    presetButton.setBounds(R(330, 25, 164, 28));
+    nextPresetButton.setBounds(R(500, 25, 28, 28));
+    saveButton.setBounds(R(538, 25, 58, 28));
+    abButton.setBounds(R(602, 25, 64, 28));
+    resetButton.setBounds(R(672, 25, 66, 28));
+    menuButton.setBounds(R(744, 25, 68, 28));
+
+    modeBox.setBounds(R(806, 179, 178, 27));
+
+    autoButton.setBounds(R(806, 216, 82, 28));
+    goldenButton.setBounds(R(902, 216, 82, 28));
+    maxButton.setBounds(R(806, 252, 82, 28));
+    bypassButton.setBounds(R(902, 252, 82, 28));
 }
 
 void BassEngineAudioProcessorEditor::timerCallback()
