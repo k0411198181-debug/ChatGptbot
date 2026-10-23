@@ -17,7 +17,10 @@ Secondary:
 MIX / OUTPUT
 
 Buttons:
-AUTO / GOLDEN / MAX / DELTA / BYPASS
+AUTO / GOLDEN / MAX / DELTA / IMAGER / BYPASS
+
+IMAGER:
+Dedicated stereo enhancement switch. It expands upper stereo information while keeping low-frequency side energy controlled. WIDE SYNTH and CINEMATIC STRINGS enable it automatically.
 
 Factory presets:
 GOLDEN SYNTH
