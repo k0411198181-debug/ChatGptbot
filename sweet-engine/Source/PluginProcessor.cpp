@@ -50,6 +50,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SweetEngineAudioProcessor::c
     p.add(std::make_unique<APB>(juce::ParameterID{"auto",1},   "Auto", true));
     p.add(std::make_unique<APB>(juce::ParameterID{"max",1},    "Max", false));
     p.add(std::make_unique<APB>(juce::ParameterID{"delta",1},  "Delta", false));
+    p.add(std::make_unique<APB>(juce::ParameterID{"imager",1}, "Imager", false));
     p.add(std::make_unique<APB>(juce::ParameterID{"bypass",1}, "Bypass", false));
 
     return p;
@@ -214,6 +215,7 @@ void SweetEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     const bool autoMode = apvts.getRawParameterValue("auto")->load() > 0.5f;
     const bool maxMode = apvts.getRawParameterValue("max")->load() > 0.5f;
     const bool deltaMode = apvts.getRawParameterValue("delta")->load() > 0.5f;
+    const bool imagerMode = apvts.getRawParameterValue("imager")->load() > 0.5f;
 
     if (!maxMode)
     {
@@ -392,10 +394,18 @@ void SweetEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             const float lowSide = sideLow.process(side);
             const float highSide = side - lowSide;
 
-            const float lowSideGain = juce::jmap(width, 0.82f, 0.55f);
-            const float highSideGain = 1.0f + width * (stringsMode
-                                     ? (maxMode ? 0.72f : 0.50f)
-                                     : (maxMode ? 0.62f : 0.44f));
+            const float lowSideGain = juce::jmap(width,
+                imagerMode ? 0.72f : 0.82f,
+                imagerMode ? 0.42f : 0.55f);
+
+            const float normalHigh = stringsMode
+                                   ? (maxMode ? 0.72f : 0.50f)
+                                   : (maxMode ? 0.62f : 0.44f);
+            const float imagerExtra = stringsMode
+                                    ? (maxMode ? 0.34f : 0.24f)
+                                    : (maxMode ? 0.30f : 0.20f);
+
+            const float highSideGain = 1.0f + width * (normalHigh + (imagerMode ? imagerExtra : 0.0f));
 
             const float newSide = lowSide * lowSideGain + highSide * highSideGain;
 
