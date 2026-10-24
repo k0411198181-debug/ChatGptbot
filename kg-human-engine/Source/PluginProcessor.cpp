@@ -214,6 +214,11 @@ void KGHumanEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const float modeFlowScale   = mode==2 ? 1.30f : (mode==1 ? 0.80f : 1.0f);
     const float modeMotionScale = mode==2 ? 1.35f : (mode==1 ? 0.75f : 1.0f);
 
+    // HUMAN becomes progressively more "performance-like" above ~80%.
+    // This is intentionally musical variation, not detector targeting.
+    const float fullHuman = juce::jlimit(0.0f, 1.0f, (human - 0.80f) / 0.20f);
+    const float macroDepth = 1.0f + fullHuman * (maxMode ? 0.85f : 0.45f);
+
     const float fastA = std::exp(-1.0f / ((mode==1 ? 0.0018f : 0.0032f) * (float)currentSampleRate));
     const float fastR = std::exp(-1.0f / ((mode==1 ? 0.035f : 0.055f) * (float)currentSampleRate));
     const float slowA = std::exp(-1.0f / ((mode==2 ? 0.055f : 0.030f) * (float)currentSampleRate));
@@ -240,7 +245,17 @@ void KGHumanEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             const float satDrive=1.0f+color*(maxMode?5.2f:3.6f);
             const float satSource=0.22f*low + 0.62f*lowMid + 0.78f*high;
             const float sat=std::tanh(satSource*satDrive)/std::tanh(satDrive);
-            float y=x+(sat-satSource)*color*(maxMode?0.50f:0.34f);
+
+            // At HUMAN 100, different regions breathe by tiny independent amounts.
+            // Low stays most stable; mids/highs receive more organic movement.
+            const float spectralA = std::sin(juce::MathConstants<float>::twoPi*lfoPhaseA);
+            const float spectralB = std::sin(juce::MathConstants<float>::twoPi*lfoPhaseB);
+            const float lowBreath  = 1.0f + fullHuman * spectralA * (maxMode ? 0.0040f : 0.0020f);
+            const float midBreath  = 1.0f + fullHuman * spectralB * (maxMode ? 0.0120f : 0.0060f);
+            const float highBreath = 1.0f - fullHuman * spectralA * (maxMode ? 0.0160f : 0.0080f);
+
+            float y = low*lowBreath + lowMid*midBreath + high*highBreath
+                    + (sat-satSource)*color*(maxMode?0.50f:0.34f);
 
             monoAbs=juce::jmax(monoAbs,std::abs(y));
             d[i]=y;
@@ -255,16 +270,23 @@ void KGHumanEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                               + 0.36f*std::sin(juce::MathConstants<float>::twoPi*lfoPhaseB);
         const float noise = nextNoise();
         const float micro = (randomish*0.72f + noise*0.28f)
-                          * feel * human * (maxMode?0.020f:0.012f);
+                          * feel * human * macroDepth * (maxMode?0.022f:0.013f);
 
         // ATTACK: musical transient shaping, stronger in RHYTHMIC mode.
+        const float transientVariation = 1.0f
+            + fullHuman * (0.55f*randomish + 0.45f*noise)
+            * (maxMode ? 0.20f : 0.10f);
+
         const float transientBoost = juce::jlimit(0.0f,
-            maxMode?0.22f:0.13f,
-            transient*attack*modeAttackScale*(maxMode?3.0f:2.1f));
+            maxMode?0.24f:0.14f,
+            transient*attack*modeAttackScale*macroDepth*transientVariation
+            *(maxMode?3.0f:2.1f));
 
         // FLOW: slow phrase-scale gain movement.
         const float phrase = std::sin(juce::MathConstants<float>::twoPi*driftPhase);
-        const float flowGain = 1.0f + phrase*flow*human*modeFlowScale*(maxMode?0.020f:0.012f);
+        const float flowGain = 1.0f
+            + phrase*flow*human*modeFlowScale*macroDepth*(maxMode?0.022f:0.013f)
+            + fullHuman*noise*flow*(maxMode?0.0035f:0.0018f);
 
         for (int ch=0; ch<nCh; ++ch)
         {
@@ -295,9 +317,14 @@ void KGHumanEngineAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             const float side=0.5f*(l[i]-r[i]);
 
             const float breathe=std::sin(juce::MathConstants<float>::twoPi*phase)
-                              * motion*human*modeMotionScale*(maxMode?0.13f:0.075f);
+                              * motion*human*modeMotionScale*macroDepth*(maxMode?0.14f:0.080f);
 
-            const float widthGain=1.0f + (width-0.5f)*(maxMode?0.90f:0.60f) + breathe;
+            const float widthFlutter = fullHuman * std::sin(
+                juce::MathConstants<float>::twoPi*(phase*0.47f + driftPhase))
+                * (maxMode ? 0.035f : 0.018f);
+
+            const float widthGain=1.0f + (width-0.5f)*(maxMode?0.90f:0.60f)
+                                + breathe + widthFlutter;
             const float lowSafe=0.90f + 0.10f*(1.0f-width);
             const float shapedSide=side*widthGain*lowSafe;
 
