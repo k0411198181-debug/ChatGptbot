@@ -1,4 +1,4 @@
-Music Engeen v0.1
+KG Music Engeen v0.1
 =================
 
 Windows x64 VST3 music-bus processor.
@@ -6,7 +6,7 @@ Windows x64 VST3 music-bus processor.
 Recommended use:
 - Route drums, bass, synths, guitars, piano and instrumental FX to one MUSIC BUS.
 - Keep lead and backing vocals outside this bus unless you intentionally want them processed.
-- Insert Music Engeen on MUSIC BUS.
+- Insert KG Music Engeen on MUSIC BUS.
 
 Main controls:
 CLEAN  - reduces mud and rumble.
@@ -31,7 +31,7 @@ CLEAN 48 / PUNCH 46 / GLUE 50 / WEIGHT 58 / SHINE 38 / WIDTH 46 / LOUD 34
 SUB 42 / TILT 50 / MIX 100 / OUTPUT 0 dB
 
 Install:
-Copy the whole "Music Engeen.vst3" bundle to:
+Copy the whole "KG Music Engeen.vst3" bundle to:
 C:\Program Files\Common Files\VST3\
 
 Then rescan VST3 plugins in REAPER.
