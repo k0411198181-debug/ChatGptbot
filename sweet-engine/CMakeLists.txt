@@ -18,7 +18,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 juce_add_plugin(SweetEngine
-    COMPANY_NAME "Galaxy Signal Records"
+    COMPANY_NAME "KG Music Records"
     BUNDLE_ID "com.galaxysignalrecords.sweetengine"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
