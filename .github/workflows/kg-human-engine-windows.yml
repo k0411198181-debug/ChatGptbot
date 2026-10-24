@@ -2,7 +2,7 @@ name: Build KG Human Engine VST3 Windows
 
 on:
   push:
-    branches: [ "kg-human-engine-build" ]
+    branches: [ "kg-human-engine-v0.2" ]
   workflow_dispatch:
 
 jobs:
@@ -31,6 +31,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: KG-Human-Engine-v0.1-Windows-VST3
+          name: KG-Human-Engine-v0.2-Windows-VST3
           path: artifact
           if-no-files-found: error
