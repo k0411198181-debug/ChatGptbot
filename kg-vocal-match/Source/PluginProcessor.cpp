@@ -181,13 +181,15 @@ void KGVocalMatchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,j
     const bool bypass=apvts.getRawParameterValue("bypass")->load()>0.5f;
     const bool exact=apvts.getRawParameterValue("exact")->load()>0.5f;
     const float strength=apvts.getRawParameterValue("match")->load()*0.01f;
-    const float rangeCents=apvts.getRawParameterValue("range")->load()*100.0f;
+    // OCTAVE SAFE keeps the singer's natural register.
+    // EXACT UNISON is allowed up to a full octave so it can follow the absolute reference pitch.
+    const float rangeCents=exact?1200.0f:apvts.getRawParameterValue("range")->load()*100.0f;
     const float vibrato=exact?1.0f:apvts.getRawParameterValue("vibrato")->load()*0.01f;
     const float natural=apvts.getRawParameterValue("natural")->load()*0.01f;
-    const float tol=apvts.getRawParameterValue("tolerance")->load();
+    const float tol=exact?juce::jmin(3.0f,apvts.getRawParameterValue("tolerance")->load()):apvts.getRawParameterValue("tolerance")->load();
     const float mix=apvts.getRawParameterValue("mix")->load()*0.01f;
     const float outGain=juce::Decibels::decibelsToGain(apvts.getRawParameterValue("output")->load());
-    const float speedMs=exact?juce::jmin(22.0f,apvts.getRawParameterValue("speed")->load()):apvts.getRawParameterValue("speed")->load();
+    const float speedMs=exact?juce::jmin(18.0f,apvts.getRawParameterValue("speed")->load()):apvts.getRawParameterValue("speed")->load();
     const float smooth=std::exp(-1.0f/(juce::jmax(1.0f,speedMs*0.001f)*(float)sr));
 
     for(int i=0;i<n;++i)
@@ -208,7 +210,7 @@ void KGVocalMatchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,j
         const bool voiced=currentLive>65.0f && currentRef>65.0f && lc>0.42f && rc>0.40f;
         if(voiced)
         {
-            float target=nearestRefOctave(currentRef,currentLive);
+            float target=exact?currentRef:nearestRefOctave(currentRef,currentLive);
             const float midi=69.0f+12.0f*std::log2(target/440.0f);
             const float snapped=440.0f*std::pow(2.0f,(std::round(midi)-69.0f)/12.0f);
             target=snapped*(1.0f-vibrato)+target*vibrato;
