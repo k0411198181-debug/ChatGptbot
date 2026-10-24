@@ -16,32 +16,75 @@ bool KGVocalMatchAudioProcessor::PitchDetector::shouldAnalyse() noexcept
 }
 std::pair<float,float> KGVocalMatchAudioProcessor::PitchDetector::analyse()
 {
+    // YIN-style cumulative mean normalized difference.
+    // This rejects the short-lag / upper-harmonic mistake that plain autocorrelation
+    // can make on low male notes.
     std::array<float,N> x{};
-    float mean=0.0f;
+    float mean=0.0f, energy=0.0f;
     for(int i=0;i<N;++i){ x[(size_t)i]=ring[(size_t)((wp+i)%N)]; mean+=x[(size_t)i]; }
     mean/=N;
-    float e=0.0f;
-    for(int i=0;i<N;++i){ x[(size_t)i]-=mean; const float w=0.5f-0.5f*std::cos(juce::MathConstants<float>::twoPi*(float)i/(float)(N-1)); x[(size_t)i]*=w; e+=x[(size_t)i]*x[(size_t)i]; }
-    if(e<1.0e-5f) return {0.0f,0.0f};
+    for(int i=0;i<N;++i){ x[(size_t)i]-=mean; energy+=x[(size_t)i]*x[(size_t)i]; }
+    if(energy<1.0e-5f) return {0.0f,0.0f};
 
     const double dsr=sampleRate/(double)down;
     const int minLag=juce::jmax(2,(int)(dsr/900.0));
     const int maxLag=juce::jmin(N/2,(int)(dsr/70.0));
-    float best=-1.0f; int bestLag=0;
-    std::array<float,N/2+1> corr{};
+
+    std::array<float,N/2+1> diff{};
+    std::array<float,N/2+1> cmnd{};
+    cmnd.fill(1.0f);
+
+    for(int lag=1;lag<=maxLag;++lag)
+    {
+        double d=0.0;
+        const int count=N-lag;
+        for(int i=0;i<count;++i)
+        {
+            const float delta=x[(size_t)i]-x[(size_t)(i+lag)];
+            d += (double)delta*(double)delta;
+        }
+        diff[(size_t)lag]=(float)d;
+    }
+
+    double running=0.0;
+    for(int lag=1;lag<=maxLag;++lag)
+    {
+        running += diff[(size_t)lag];
+        cmnd[(size_t)lag]=(float)((double)diff[(size_t)lag]*(double)lag/(running+1.0e-12));
+    }
+
+    int bestLag=0;
+    constexpr float threshold=0.18f;
     for(int lag=minLag;lag<=maxLag;++lag)
     {
-        double num=0,e1=0,e2=0;
-        const int count=N-lag;
-        for(int i=0;i<count;++i){ const float a=x[(size_t)i],b=x[(size_t)(i+lag)]; num+=a*b; e1+=a*a; e2+=b*b; }
-        const float c=(float)(num/std::sqrt(e1*e2+1.0e-12)); corr[(size_t)lag]=c;
-        if(c>best){ best=c; bestLag=lag; }
+        if(cmnd[(size_t)lag] < threshold)
+        {
+            while(lag+1<=maxLag && cmnd[(size_t)(lag+1)] < cmnd[(size_t)lag]) ++lag;
+            bestLag=lag;
+            break;
+        }
     }
-    if(bestLag<=0 || best<0.28f) return {0.0f,juce::jmax(0.0f,best)};
+
+    if(bestLag==0)
+    {
+        float best=1.0e9f;
+        for(int lag=minLag;lag<=maxLag;++lag)
+            if(cmnd[(size_t)lag] < best){ best=cmnd[(size_t)lag]; bestLag=lag; }
+    }
+
+    if(bestLag<=0) return {0.0f,0.0f};
+    const float confidence=juce::jlimit(0.0f,1.0f,1.0f-cmnd[(size_t)bestLag]);
+    if(confidence<0.30f) return {0.0f,confidence};
+
     float lagF=(float)bestLag;
-    if(bestLag>minLag && bestLag<maxLag){ const float a=corr[(size_t)(bestLag-1)],b=corr[(size_t)bestLag],c=corr[(size_t)(bestLag+1)]; const float den=a-2*b+c; if(std::abs(den)>1.0e-6f) lagF += 0.5f*(a-c)/den; }
-    const float hz=(float)(dsr/(double)lagF);
-    return {hz,juce::jlimit(0.0f,1.0f,best)};
+    if(bestLag>minLag && bestLag<maxLag)
+    {
+        const float a=cmnd[(size_t)(bestLag-1)], b=cmnd[(size_t)bestLag], cc=cmnd[(size_t)(bestLag+1)];
+        const float den=a-2.0f*b+cc;
+        if(std::abs(den)>1.0e-7f) lagF += 0.5f*(a-cc)/den;
+    }
+
+    return {(float)(dsr/(double)lagF),confidence};
 }
 
 void KGVocalMatchAudioProcessor::GrainShifter::prepare(double)
