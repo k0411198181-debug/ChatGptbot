@@ -30,7 +30,7 @@ juce_add_plugin(MusicEngeen
     PLUGIN_CODE Msen
     FORMATS VST3
     VST3_CATEGORIES Fx Mastering
-    PRODUCT_NAME "Music Engeen"
+    PRODUCT_NAME "KG Music Engeen"
 )
 
 juce_generate_juce_header(MusicEngeen)
