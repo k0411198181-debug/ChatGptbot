@@ -30,7 +30,7 @@ juce_add_plugin(SweetEngine
     PLUGIN_CODE SwEn
     FORMATS VST3
     VST3_CATEGORIES Fx
-    PRODUCT_NAME "Sweet Engine"
+    PRODUCT_NAME "KG Sweet Engine"
 )
 
 juce_generate_juce_header(SweetEngine)
