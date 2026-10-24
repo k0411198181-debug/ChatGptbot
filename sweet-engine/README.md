@@ -1,4 +1,4 @@
-Sweet Engine v0.1
+KG Sweet Engine v0.1
 =================
 
 Galaxy Signal Records
@@ -31,7 +31,7 @@ SILK STRINGS
 CINEMATIC STRINGS
 
 Install:
-Copy the whole "Sweet Engine.vst3" bundle to:
+Copy the whole "KG Sweet Engine.vst3" bundle to:
 C:\Program Files\Common Files\VST3\
 
 Then rescan VST3 plugins in REAPER.
