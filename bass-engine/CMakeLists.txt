@@ -30,7 +30,7 @@ juce_add_plugin(BassEngine
     PLUGIN_CODE BsEn
     FORMATS VST3
     VST3_CATEGORIES Fx Bass
-    PRODUCT_NAME "Bass Engine"
+    PRODUCT_NAME "KG Bass Engine"
 )
 
 juce_generate_juce_header(BassEngine)
