@@ -420,7 +420,7 @@ void SweetEngineAudioProcessorEditor::showMainMenu()
     menu.addItem(1, "Golden for current mode");
     menu.addItem(2, "Load USER snapshot", userSnapshot.getSize() > 0);
     menu.addSeparator();
-    menu.addItem(3, "About Sweet Engine v0.1");
+    menu.addItem(3, "About KG Sweet Engine v0.1");
 
     juce::Component::SafePointer<SweetEngineAudioProcessorEditor> safeThis(this);
 
@@ -442,7 +442,7 @@ void SweetEngineAudioProcessorEditor::showMainMenu()
             {
                 juce::AlertWindow::showMessageBoxAsync(
                     juce::MessageBoxIconType::InfoIcon,
-                    "Sweet Engine v0.1",
+                    "KG Sweet Engine v0.1",
                     "Galaxy Signal Records\n\n"
                     "SYNTH = definition, density and controlled shine.\n"
                     "STRINGS = smoothness, body and silky air.\n\n"
@@ -709,7 +709,7 @@ void SweetEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xfff8f5ff));
     g.setFont(juce::FontOptions(25.5f, juce::Font::bold));
-    g.drawText("SWEET ENGINE", 30, 18, 248, 34, juce::Justification::centredLeft);
+    g.drawText("KG SWEET ENGINE", 30, 18, 248, 34, juce::Justification::centredLeft);
 
     g.setColour(juce::Colour(0xffffaddd));
     g.setFont(juce::FontOptions(10.4f, juce::Font::bold));
@@ -739,7 +739,7 @@ void SweetEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff64728c));
     g.setFont(juce::FontOptions(9.0f));
-    g.drawText("Sweet Engine VST3  v0.1", 32, 574, 195, 14,
+    g.drawText("KG Sweet Engine VST3  v0.1", 32, 574, 195, 14,
                juce::Justification::centredLeft);
 }
 
