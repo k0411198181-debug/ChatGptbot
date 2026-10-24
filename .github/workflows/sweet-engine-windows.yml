@@ -1,8 +1,8 @@
-name: Build Sweet Engine VST3 Windows
+name: Build KG Sweet Engine VST3 Windows
 
 on:
   push:
-    branches: [ "sweet-engine-build" ]
+    branches: [ "kg-sweet-engine-v0.1" ]
   workflow_dispatch:
 
 jobs:
@@ -23,14 +23,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifact | Out-Null
-          $bundle = Get-ChildItem -Path sweet-engine/build -Recurse -Directory -Filter "Sweet Engine.vst3" | Select-Object -First 1
-          if (-not $bundle) { throw "Sweet Engine.vst3 bundle not found" }
+          $bundle = Get-ChildItem -Path sweet-engine/build -Recurse -Directory -Filter "KG Sweet Engine.vst3" | Select-Object -First 1
+          if (-not $bundle) { throw "KG Sweet Engine.vst3 bundle not found" }
           Copy-Item -Recurse -Force $bundle.FullName artifact\
           Copy-Item sweet-engine\README.md artifact\README.txt
           Get-ChildItem -Recurse artifact
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Sweet-Engine-v0.1-Windows-VST3
+          name: KG-Sweet-Engine-v0.1-Windows-VST3
           path: artifact
           if-no-files-found: error
