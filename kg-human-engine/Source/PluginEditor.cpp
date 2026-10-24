@@ -323,12 +323,13 @@ void KGHumanEngineAudioProcessorEditor::applyPreset(int index)
         bool autoMode,maxMode,deltaMode;
     };
 
-    static const std::array<Preset,5> presets{{
+    static const std::array<Preset,6> presets{{
         {55,48,46,52,34,45,38,48,100,0,0,true,false,false},
         {62,55,42,58,38,52,42,50,100,0,0,true,false,false},
         {54,46,66,38,28,42,30,44,100,0,1,true,false,false},
         {58,50,28,72,48,48,64,66,100,0,2,true,false,false},
-        {36,32,34,38,20,34,24,42,100,0,0,true,false,false}
+        {36,32,34,38,20,34,24,42,100,0,0,true,false,false},
+        {100,72,58,66,54,58,56,54,100,-0.3f,0,true,true,false}
     }};
 
     const auto& v=presets[(size_t)currentPreset];
@@ -402,7 +403,7 @@ void KGHumanEngineAudioProcessorEditor::showMainMenu()
     menu.addItem(1,"Golden for current mode");
     menu.addItem(2,"Load USER snapshot",userSnapshot.getSize()>0);
     menu.addSeparator();
-    menu.addItem(3,"About KG Human Engine v0.1");
+    menu.addItem(3,"About KG Human Engine v0.2");
 
     juce::Component::SafePointer<KGHumanEngineAudioProcessorEditor> safeThis(this);
 
@@ -423,11 +424,12 @@ void KGHumanEngineAudioProcessorEditor::showMainMenu()
             {
                 juce::AlertWindow::showMessageBoxAsync(
                     juce::MessageBoxIconType::InfoIcon,
-                    "KG Human Engine v0.1",
+                    "KG Human Engine v0.2",
                     "Galaxy Signal Records\n\n"
                     "MELODIC = natural musical phrasing and gentle color.\n"
                     "RHYTHMIC = stronger articulation and pulse.\n"
-                    "ATMOSPHERE = slow flow, width and stereo breathing.\n\n"
+                    "ATMOSPHERE = slow flow, width and stereo breathing.\n"
+                    "FULL PERFORMANCE = HUMAN 100 with broader musical variation.\n\n"
                     "DELTA lets you hear only what Human Engine changes.");
             }
         });
@@ -700,7 +702,7 @@ void KGHumanEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff64786e));
     g.setFont(juce::FontOptions(9.0f));
-    g.drawText("KG Human Engine VST3  v0.1",32,574,205,14,juce::Justification::centredLeft);
+    g.drawText("KG Human Engine VST3  v0.2",32,574,205,14,juce::Justification::centredLeft);
 }
 
 void KGHumanEngineAudioProcessorEditor::resized()
