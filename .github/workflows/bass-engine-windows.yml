@@ -1,8 +1,8 @@
-name: Build Bass Engine VST3 Windows
+name: Build KG Bass Engine VST3 Windows
 
 on:
   push:
-    branches: [ "bass-engine-v0.2" ]
+    branches: [ "kg-bass-engine-v0.2" ]
   workflow_dispatch:
 
 jobs:
@@ -23,14 +23,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifact | Out-Null
-          $bundle = Get-ChildItem -Path bass-engine/build -Recurse -Directory -Filter "Bass Engine.vst3" | Select-Object -First 1
-          if (-not $bundle) { throw "Bass Engine.vst3 bundle not found" }
+          $bundle = Get-ChildItem -Path bass-engine/build -Recurse -Directory -Filter "KG Bass Engine.vst3" | Select-Object -First 1
+          if (-not $bundle) { throw "KG Bass Engine.vst3 bundle not found" }
           Copy-Item -Recurse -Force $bundle.FullName artifact\
           Copy-Item bass-engine\README.md artifact\README.txt
           Get-ChildItem -Recurse artifact
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Bass-Engine-v0.2-Windows-VST3
+          name: KG-Bass-Engine-v0.2-Windows-VST3
           path: artifact
           if-no-files-found: error
