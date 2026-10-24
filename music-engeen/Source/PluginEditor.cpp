@@ -566,7 +566,7 @@ void MusicEngeenAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xfffff3d5));
     g.setFont(juce::FontOptions(29.0f, juce::Font::bold));
-    g.drawText("MUSIC ENGEEN", 260, 20, 460, 38,
+    g.drawText("KG MUSIC ENGEEN", 260, 20, 460, 38,
                juce::Justification::centred);
 
     g.setColour(juce::Colour(0xffb89c66));
@@ -591,7 +591,7 @@ void MusicEngeenAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff5e6f8b));
     g.setFont(juce::FontOptions(9.5f));
-    g.drawText("KG MUSIC RECORDS  |  Music Engeen VST3 v0.1",
+    g.drawText("KG MUSIC RECORDS  |  KG Music Engeen VST3 v0.1",
                32, 486, 300, 15,
                juce::Justification::centredLeft);
 }
