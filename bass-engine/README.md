@@ -1,4 +1,4 @@
-Bass Engine v0.2
+KG Bass Engine v0.2
 ================
 
 Windows x64 VST3 low-end enhancement processor by Galaxy Signal Records.
@@ -61,7 +61,7 @@ KICK FAT
 
 Install
 -------
-Copy the whole "Bass Engine.vst3" bundle to:
+Copy the whole "KG Bass Engine.vst3" bundle to:
 C:\Program Files\Common Files\VST3\
 
 Then rescan VST3 plugins in REAPER.
