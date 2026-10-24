@@ -398,7 +398,7 @@ void BassEngineAudioProcessorEditor::showMainMenu()
     menu.addItem(1, "Golden for current mode");
     menu.addItem(2, "Load USER snapshot", userSnapshot.getSize() > 0);
     menu.addSeparator();
-    menu.addItem(3, "About Bass Engine v0.2");
+    menu.addItem(3, "About KG Bass Engine v0.2");
 
     juce::Component::SafePointer<BassEngineAudioProcessorEditor> safeThis(this);
 
@@ -420,7 +420,7 @@ void BassEngineAudioProcessorEditor::showMainMenu()
             {
                 juce::AlertWindow::showMessageBoxAsync(
                     juce::MessageBoxIconType::InfoIcon,
-                    "Bass Engine v0.2",
+                    "KG Bass Engine v0.2",
                     "Galaxy Signal Records\n\nBASS mode controls boom and builds weight.\n"
                     "DRUM / KICK mode shifts the energy toward punch and body.\n\n"
                     "AUTO protects excessive low end. MAX unlocks aggressive processing.");
@@ -671,7 +671,7 @@ void BassEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xfff4f7ff));
     g.setFont(juce::FontOptions(25.5f, juce::Font::bold));
-    g.drawText("BASS ENGINE", 30, 18, 248, 34, juce::Justification::centredLeft);
+    g.drawText("KG BASS ENGINE", 30, 18, 248, 34, juce::Justification::centredLeft);
 
     g.setColour(juce::Colour(0xffffd36d));
     g.setFont(juce::FontOptions(10.4f, juce::Font::bold));
@@ -701,7 +701,7 @@ void BassEngineAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour(0xff596981));
     g.setFont(juce::FontOptions(9.0f));
-    g.drawText("Bass Engine VST3  v0.2", 32, 574, 190, 14, juce::Justification::centredLeft);
+    g.drawText("KG Bass Engine VST3  v0.2", 32, 574, 190, 14, juce::Justification::centredLeft);
 }
 
 void BassEngineAudioProcessorEditor::resized()
