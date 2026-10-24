@@ -1,7 +1,7 @@
 name: Build KG Vocal Match VST3 Windows
 on:
   push:
-    branches: [ "kg-vocal-match-v0.3" ]
+    branches: [ "kg-vocal-match-v0.4" ]
   workflow_dispatch:
 jobs:
   build:
@@ -24,6 +24,6 @@ jobs:
           Copy-Item kg-vocal-match\README.md artifact\README.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: KG-Vocal-Match-v0.3-Windows-VST3
+          name: KG-Vocal-Match-v0.4-Windows-VST3
           path: artifact
           if-no-files-found: error
