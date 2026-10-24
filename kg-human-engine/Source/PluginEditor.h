@@ -78,7 +78,8 @@ private:
         "MELODIC SOUL",
         "RHYTHMIC FEEL",
         "ATMOSPHERE FLOW",
-        "SUBTLE LIFE"
+        "SUBTLE LIFE",
+        "FULL PERFORMANCE"
     };
 
     const std::array<juce::String,8> ids{
