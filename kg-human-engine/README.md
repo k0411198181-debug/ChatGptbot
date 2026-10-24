@@ -1,4 +1,4 @@
-KG Human Engine v0.1
+KG Human Engine v0.2
 ====================
 
 Galaxy Signal Records
@@ -53,6 +53,14 @@ MELODIC SOUL
 RHYTHMIC FEEL
 ATMOSPHERE FLOW
 SUBTLE LIFE
+FULL PERFORMANCE
+
+HUMAN 100 / FULL PERFORMANCE
+----------------------------
+At the top of the HUMAN control, the engine progressively links multiple musical
+variation domains instead of simply increasing one modulation source:
+micro-dynamics, transient articulation, spectral breathing, phrase-scale flow,
+harmonic color and stereo motion. Low frequencies remain the most stable region.
 
 Install
 -------
